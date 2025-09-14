@@ -20,6 +20,7 @@
   "homepage": "https://github.com/HMI-Studios/fate.archivium.net#readme",
   "devDependencies": {
     "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
     "swc-loader": "^0.2.6",
     "webpack-cli": "^6.0.1"
   },

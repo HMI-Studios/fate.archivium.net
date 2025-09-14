@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from "react-router";
 import App, { type AppProps } from './App.tsx';
 
-const root: HTMLElement = document.querySelector('#root')!;
+const root: HTMLElement = document.querySelector('#app')!;
 const dataset: AppProps = root.dataset as AppProps;
 
 createRoot(root).render(
