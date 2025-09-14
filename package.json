@@ -1,0 +1,33 @@
+{
+  "name": "fate.archivium.net",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/main.tsx",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "cross-env NODE_ENV=development webpack watch",
+    "build": "cross-env NODE_ENV=production webpack"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HMI-Studios/fate.archivium.net.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/HMI-Studios/fate.archivium.net/issues"
+  },
+  "homepage": "https://github.com/HMI-Studios/fate.archivium.net#readme",
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "swc-loader": "^0.2.6",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "cross-env": "^10.0.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router": "^7.9.1",
+    "webpack": "^5.101.3"
+  }
+}
