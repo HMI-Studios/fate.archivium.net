@@ -10,8 +10,8 @@ export default {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
-    clean: true, // Clean old builds
-    publicPath: '/', // Adjust if using nested routes
+    clean: false,
+    publicPath: '/',
   },
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx'],
