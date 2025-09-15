@@ -38052,11 +38052,42 @@ function Navbar(props) {
     var user = props.user;
     return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
         children: [
-            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("nav", {
-                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("span", {
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("header", {
+                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("nav", {
+                    className: "navbar mb-0",
                     children: [
-                        "Logged in as ",
-                        user.username
+                        /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
+                            className: "navbarBtns shrink-1 scroll-x"
+                        }, void 0, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                            lineNumber: 13,
+                            columnNumber: 9
+                        }, this),
+                        /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
+                            className: "navbarBtns",
+                            children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
+                                className: "navbarBtn",
+                                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("span", {
+                                    className: "navbarBtnLink navbarText",
+                                    children: [
+                                        "Logged in as ",
+                                        user.username
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                                    lineNumber: 16,
+                                    columnNumber: 13
+                                }, this)
+                            }, void 0, false, {
+                                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                                lineNumber: 15,
+                                columnNumber: 11
+                            }, this)
+                        }, void 0, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                            lineNumber: 14,
+                            columnNumber: 9
+                        }, this)
                     ]
                 }, void 0, true, {
                     fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
@@ -38068,9 +38099,22 @@ function Navbar(props) {
                 lineNumber: 11,
                 columnNumber: 5
             }, this),
-            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_1__.Outlet, {}, void 0, false, {
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("main", {
+                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
+                    className: "page",
+                    children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_1__.Outlet, {}, void 0, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                        lineNumber: 24,
+                        columnNumber: 9
+                    }, this)
+                }, void 0, false, {
+                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                    lineNumber: 23,
+                    columnNumber: 7
+                }, this)
+            }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                lineNumber: 15,
+                lineNumber: 22,
                 columnNumber: 5
             }, this)
         ]
