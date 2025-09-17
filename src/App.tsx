@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
+import NewCampaign from './pages/NewCampaign';
 
-const ArchiviumURL = 'https://dev.archivium.net';
+export const ARCHIVIUM_URL = 'https://dev.archivium.net';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    fetch(`${ArchiviumURL}/api/me`, { credentials: 'include' }).then(async (response) => {
+    fetch(`${ARCHIVIUM_URL}/api/me`, { credentials: 'include' }).then(async (response) => {
       const data = await response.json()
       setUser(data);
       setLoading(false);
@@ -18,21 +19,24 @@ export default function App() {
   }, []);
 
   if (loading) return <>
-    <p>Loading, please wait...</p>
+    <div style={{height: 'calc(50vh + 25px)'}} className='w-100 d-flex justify-center align-end'>
+      <div className='loader' />
+    </div>
   </>;
 
   if (!user) {
     const pageQuery = new URLSearchParams();
     pageQuery.append('page', window.location.href);
     return <>
-      To proceed, please go to Archivium and <a href={`${ArchiviumURL}/login?${pageQuery}`}>log in</a>.
+      To proceed, please go to Archivium and <a className='link link-animated' href={`${ARCHIVIUM_URL}/login?${pageQuery}`}>log in</a>.
     </>;
   }
   
   return (
     <Routes>
-      <Route path='/' element={<Navbar user={user} />}>
+      <Route element={<Navbar user={user} />}>
         <Route index element={<Home />} />
+        <Route path='new' element={<NewCampaign />} />
       </Route>
     </Routes>
   );
