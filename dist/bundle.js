@@ -38446,8 +38446,16 @@ function Home() {
                     campaigns.length > 0 && /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
                         children: campaigns.map(function(campaign) {
                             return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
-                                children: campaign.title
-                            }, void 0, false, {
+                                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
+                                    className: "link link-animated",
+                                    to: "/campaigns/".concat(campaign.shortname),
+                                    children: campaign.title
+                                }, void 0, false, {
+                                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
+                                    lineNumber: 45,
+                                    columnNumber: 11
+                                }, _this)
+                            }, campaign.shortname, false, {
                                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
                                 lineNumber: 44,
                                 columnNumber: 37
