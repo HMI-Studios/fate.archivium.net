@@ -37770,8 +37770,9 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_1__);
 /* harmony import */ var react_router__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-router */ "./node_modules/react-router/dist/development/chunk-B7RQU5TL.mjs");
 /* harmony import */ var _components_Navbar__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./components/Navbar */ "./src/components/Navbar.tsx");
-/* harmony import */ var _pages_Home__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./pages/Home */ "./src/pages/Home.tsx");
-/* harmony import */ var _pages_NewCampaign__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./pages/NewCampaign */ "./src/pages/NewCampaign.tsx");
+/* harmony import */ var _pages_Campaign__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./pages/Campaign */ "./src/pages/Campaign.tsx");
+/* harmony import */ var _pages_Home__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./pages/Home */ "./src/pages/Home.tsx");
+/* harmony import */ var _pages_NewCampaign__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./pages/NewCampaign */ "./src/pages/NewCampaign.tsx");
 function _array_like_to_array(arr, len) {
     if (len == null || len > arr.length) len = arr.length;
     for(var i = 0, arr2 = new Array(len); i < len; i++)arr2[i] = arr[i];
@@ -37944,6 +37945,7 @@ function _ts_generator(thisArg, body) {
 
 
 
+
 var ARCHIVIUM_URL = 'https://dev.archivium.net';
 function App() {
     var _useState = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(true), 2), loading = _useState[0], setLoading = _useState[1];
@@ -37983,12 +37985,12 @@ function App() {
                 className: "loader"
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-                lineNumber: 23,
+                lineNumber: 24,
                 columnNumber: 7
             }, this)
         }, void 0, false, {
             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-            lineNumber: 22,
+            lineNumber: 23,
             columnNumber: 5
         }, this)
     }, void 0, false);
@@ -38004,7 +38006,7 @@ function App() {
                     children: "log in"
                 }, void 0, false, {
                     fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-                    lineNumber: 31,
+                    lineNumber: 32,
                     columnNumber: 46
                 }, this),
                 "."
@@ -38017,43 +38019,62 @@ function App() {
                 user: user
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-                lineNumber: 37,
+                lineNumber: 38,
                 columnNumber: 23
             }, void 0),
             children: [
                 /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
                     index: true,
-                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Home__WEBPACK_IMPORTED_MODULE_4__["default"], {}, void 0, false, {
-                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-                        lineNumber: 38,
-                        columnNumber: 31
-                    }, void 0)
-                }, void 0, false, {
-                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-                    lineNumber: 38,
-                    columnNumber: 9
-                }, this),
-                /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
-                    path: "new",
-                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_NewCampaign__WEBPACK_IMPORTED_MODULE_5__["default"], {}, void 0, false, {
+                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Home__WEBPACK_IMPORTED_MODULE_5__["default"], {}, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
                         lineNumber: 39,
-                        columnNumber: 36
+                        columnNumber: 31
                     }, void 0)
                 }, void 0, false, {
                     fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
                     lineNumber: 39,
                     columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
+                    path: "new",
+                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_NewCampaign__WEBPACK_IMPORTED_MODULE_6__["default"], {}, void 0, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
+                        lineNumber: 40,
+                        columnNumber: 36
+                    }, void 0)
+                }, void 0, false, {
+                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
+                    lineNumber: 40,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
+                    path: "campaigns",
+                    children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
+                        path: ":campaign",
+                        element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Campaign__WEBPACK_IMPORTED_MODULE_4__["default"], {}, void 0, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
+                            lineNumber: 42,
+                            columnNumber: 44
+                        }, void 0)
+                    }, void 0, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
+                        lineNumber: 42,
+                        columnNumber: 11
+                    }, this)
+                }, void 0, false, {
+                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
+                    lineNumber: 41,
+                    columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-            lineNumber: 37,
+            lineNumber: 38,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
-        lineNumber: 36,
+        lineNumber: 37,
         columnNumber: 5
     }, this);
 }
@@ -38143,6 +38164,336 @@ function Navbar(props) {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
                 lineNumber: 22,
                 columnNumber: 5
+            }, this)
+        ]
+    }, void 0, true);
+}
+
+
+/***/ }),
+
+/***/ "./src/pages/Campaign.tsx":
+/*!********************************!*\
+  !*** ./src/pages/Campaign.tsx ***!
+  \********************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ Campaign)
+/* harmony export */ });
+/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ "./node_modules/react/jsx-dev-runtime.js");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var _App__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../App */ "./src/App.tsx");
+/* harmony import */ var react_router__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! react-router */ "./node_modules/react-router/dist/development/chunk-B7RQU5TL.mjs");
+function _array_like_to_array(arr, len) {
+    if (len == null || len > arr.length) len = arr.length;
+    for(var i = 0, arr2 = new Array(len); i < len; i++)arr2[i] = arr[i];
+    return arr2;
+}
+function _array_with_holes(arr) {
+    if (Array.isArray(arr)) return arr;
+}
+function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {
+    try {
+        var info = gen[key](arg);
+        var value = info.value;
+    } catch (error) {
+        reject(error);
+        return;
+    }
+    if (info.done) {
+        resolve(value);
+    } else {
+        Promise.resolve(value).then(_next, _throw);
+    }
+}
+function _async_to_generator(fn) {
+    return function() {
+        var self = this, args = arguments;
+        return new Promise(function(resolve, reject) {
+            var gen = fn.apply(self, args);
+            function _next(value) {
+                asyncGeneratorStep(gen, resolve, reject, _next, _throw, "next", value);
+            }
+            function _throw(err) {
+                asyncGeneratorStep(gen, resolve, reject, _next, _throw, "throw", err);
+            }
+            _next(undefined);
+        });
+    };
+}
+function _define_property(obj, key, value) {
+    if (key in obj) {
+        Object.defineProperty(obj, key, {
+            value: value,
+            enumerable: true,
+            configurable: true,
+            writable: true
+        });
+    } else {
+        obj[key] = value;
+    }
+    return obj;
+}
+function _iterable_to_array_limit(arr, i) {
+    var _i = arr == null ? null : typeof Symbol !== "undefined" && arr[Symbol.iterator] || arr["@@iterator"];
+    if (_i == null) return;
+    var _arr = [];
+    var _n = true;
+    var _d = false;
+    var _s, _e;
+    try {
+        for(_i = _i.call(arr); !(_n = (_s = _i.next()).done); _n = true){
+            _arr.push(_s.value);
+            if (i && _arr.length === i) break;
+        }
+    } catch (err) {
+        _d = true;
+        _e = err;
+    } finally{
+        try {
+            if (!_n && _i["return"] != null) _i["return"]();
+        } finally{
+            if (_d) throw _e;
+        }
+    }
+    return _arr;
+}
+function _non_iterable_rest() {
+    throw new TypeError("Invalid attempt to destructure non-iterable instance.\\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+}
+function _object_spread(target) {
+    for(var i = 1; i < arguments.length; i++){
+        var source = arguments[i] != null ? arguments[i] : {};
+        var ownKeys = Object.keys(source);
+        if (typeof Object.getOwnPropertySymbols === "function") {
+            ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function(sym) {
+                return Object.getOwnPropertyDescriptor(source, sym).enumerable;
+            }));
+        }
+        ownKeys.forEach(function(key) {
+            _define_property(target, key, source[key]);
+        });
+    }
+    return target;
+}
+function ownKeys(object, enumerableOnly) {
+    var keys = Object.keys(object);
+    if (Object.getOwnPropertySymbols) {
+        var symbols = Object.getOwnPropertySymbols(object);
+        if (enumerableOnly) {
+            symbols = symbols.filter(function(sym) {
+                return Object.getOwnPropertyDescriptor(object, sym).enumerable;
+            });
+        }
+        keys.push.apply(keys, symbols);
+    }
+    return keys;
+}
+function _object_spread_props(target, source) {
+    source = source != null ? source : {};
+    if (Object.getOwnPropertyDescriptors) {
+        Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
+    } else {
+        ownKeys(Object(source)).forEach(function(key) {
+            Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));
+        });
+    }
+    return target;
+}
+function _sliced_to_array(arr, i) {
+    return _array_with_holes(arr) || _iterable_to_array_limit(arr, i) || _unsupported_iterable_to_array(arr, i) || _non_iterable_rest();
+}
+function _unsupported_iterable_to_array(o, minLen) {
+    if (!o) return;
+    if (typeof o === "string") return _array_like_to_array(o, minLen);
+    var n = Object.prototype.toString.call(o).slice(8, -1);
+    if (n === "Object" && o.constructor) n = o.constructor.name;
+    if (n === "Map" || n === "Set") return Array.from(n);
+    if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _array_like_to_array(o, minLen);
+}
+function _ts_generator(thisArg, body) {
+    var f, y, t, _ = {
+        label: 0,
+        sent: function() {
+            if (t[0] & 1) throw t[1];
+            return t[1];
+        },
+        trys: [],
+        ops: []
+    }, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() {
+        return this;
+    }), g;
+    function verb(n) {
+        return function(v) {
+            return step([
+                n,
+                v
+            ]);
+        };
+    }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while(g && (g = 0, op[0] && (_ = 0)), _)try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [
+                op[0] & 2,
+                t.value
+            ];
+            switch(op[0]){
+                case 0:
+                case 1:
+                    t = op;
+                    break;
+                case 4:
+                    _.label++;
+                    return {
+                        value: op[1],
+                        done: false
+                    };
+                case 5:
+                    _.label++;
+                    y = op[1];
+                    op = [
+                        0
+                    ];
+                    continue;
+                case 7:
+                    op = _.ops.pop();
+                    _.trys.pop();
+                    continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) {
+                        _ = 0;
+                        continue;
+                    }
+                    if (op[0] === 3 && (!t || op[1] > t[0] && op[1] < t[3])) {
+                        _.label = op[1];
+                        break;
+                    }
+                    if (op[0] === 6 && _.label < t[1]) {
+                        _.label = t[1];
+                        t = op;
+                        break;
+                    }
+                    if (t && _.label < t[2]) {
+                        _.label = t[2];
+                        _.ops.push(op);
+                        break;
+                    }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop();
+                    continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) {
+            op = [
+                6,
+                e
+            ];
+            y = 0;
+        } finally{
+            f = t = 0;
+        }
+        if (op[0] & 5) throw op[1];
+        return {
+            value: op[0] ? op[1] : void 0,
+            done: true
+        };
+    }
+}
+
+
+
+
+function Campaign() {
+    var _this = this;
+    var _useState = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(null), 2), campaigns = _useState[0], setCampaigns = _useState[1];
+    (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(function() {
+        fetch("".concat(_App__WEBPACK_IMPORTED_MODULE_2__.ARCHIVIUM_URL, "/api/universes"), {
+            credentials: 'include'
+        }).then(function(response) {
+            return _async_to_generator(function() {
+                var data;
+                return _ts_generator(this, function(_state) {
+                    switch(_state.label){
+                        case 0:
+                            return [
+                                4,
+                                response.json()
+                            ];
+                        case 1:
+                            data = _state.sent().map(function(campaign) {
+                                return _object_spread_props(_object_spread({}, campaign), {
+                                    created_at: new Date(campaign.created_at),
+                                    updated_at: new Date(campaign.updated_at),
+                                    obj_data: JSON.parse(campaign.obj_data)
+                                });
+                            });
+                            setCampaigns(data.filter(function(c) {
+                                return c.obj_data.isFateCampaign;
+                            }));
+                            return [
+                                2
+                            ];
+                    }
+                });
+            })();
+        });
+    }, []);
+    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
+        children: [
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("h1", {
+                children: "Characters"
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 40,
+                columnNumber: 5
+            }, this),
+            campaigns ? /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
+                children: [
+                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
+                        className: "link link-animated ml-2",
+                        to: "/new",
+                        children: "New Campaign"
+                    }, void 0, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                        lineNumber: 42,
+                        columnNumber: 7
+                    }, this),
+                    campaigns.length > 0 && /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
+                        children: campaigns.map(function(campaign) {
+                            return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
+                                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
+                                    className: "link link-animated",
+                                    to: "/campaigns/".concat(campaign.shortname),
+                                    children: campaign.title
+                                }, void 0, false, {
+                                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                                    lineNumber: 45,
+                                    columnNumber: 11
+                                }, _this)
+                            }, campaign.shortname, false, {
+                                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                                lineNumber: 44,
+                                columnNumber: 37
+                            }, _this);
+                        })
+                    }, void 0, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                        lineNumber: 43,
+                        columnNumber: 32
+                    }, this)
+                ]
+            }, void 0, true) : /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
+                className: "loader ml-2"
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 48,
+                columnNumber: 11
             }, this)
         ]
     }, void 0, true);
@@ -38728,7 +39079,59 @@ function NewCampaign() {
         discussion_enabled: false,
         discussion_open: false,
         obj_data: {
-            isFateCampaign: true
+            isFateCampaign: true,
+            cats: {
+                npc: [
+                    "NPC",
+                    "NPCs",
+                    "#e82c17"
+                ],
+                location: [
+                    "location",
+                    "locations",
+                    "#1a9e00"
+                ],
+                event: [
+                    "event",
+                    "events",
+                    "#9eabae"
+                ],
+                plotline: [
+                    "plotline",
+                    "plotlines",
+                    "#69d0fc"
+                ],
+                monster: [
+                    "monster",
+                    "monsters",
+                    "#ba40f2"
+                ],
+                item: [
+                    "item",
+                    "items",
+                    "#ffc107"
+                ],
+                pc: [
+                    "PC",
+                    "PCs",
+                    "#deddca"
+                ],
+                stunt: [
+                    "stunt",
+                    "stunts",
+                    "#6e89d8"
+                ],
+                scenario: [
+                    "scenario",
+                    "scenarios",
+                    "#707070"
+                ],
+                note: [
+                    "note",
+                    "notes",
+                    "#f1f0e9"
+                ]
+            }
         }
     }), 2), newCampaign = _useState1[0], setNewCampaign = _useState1[1];
     function postCampaign(e) {
@@ -38779,7 +39182,7 @@ function NewCampaign() {
                 children: "New Campaign"
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                lineNumber: 48,
+                lineNumber: 100,
                 columnNumber: 5
             }, this),
             /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("form", {
@@ -38798,12 +39201,12 @@ function NewCampaign() {
                             placeholder: "Title"
                         }, void 0, false, {
                             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                            lineNumber: 51,
+                            lineNumber: 103,
                             columnNumber: 9
                         }, this)
                     }, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                        lineNumber: 50,
+                        lineNumber: 102,
                         columnNumber: 7
                     }, this),
                     /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
@@ -38819,12 +39222,12 @@ function NewCampaign() {
                             placeholder: "Shortname"
                         }, void 0, false, {
                             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                            lineNumber: 54,
+                            lineNumber: 106,
                             columnNumber: 9
                         }, this)
                     }, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                        lineNumber: 53,
+                        lineNumber: 105,
                         columnNumber: 7
                     }, this),
                     /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
@@ -38832,12 +39235,12 @@ function NewCampaign() {
                             type: "submit"
                         }, void 0, false, {
                             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                            lineNumber: 57,
+                            lineNumber: 109,
                             columnNumber: 9
                         }, this)
                     }, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                        lineNumber: 56,
+                        lineNumber: 108,
                         columnNumber: 7
                     }, this),
                     error && /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
@@ -38846,18 +39249,18 @@ function NewCampaign() {
                             children: error
                         }, void 0, false, {
                             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                            lineNumber: 60,
+                            lineNumber: 112,
                             columnNumber: 9
                         }, this)
                     }, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                        lineNumber: 59,
+                        lineNumber: 111,
                         columnNumber: 17
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\NewCampaign.tsx",
-                lineNumber: 49,
+                lineNumber: 101,
                 columnNumber: 5
             }, this)
         ]

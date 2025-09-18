@@ -22,6 +22,58 @@ export default function NewCampaign() {
     discussion_open: false,
     obj_data: {
       isFateCampaign: true,
+      cats: {
+        npc: [
+          "NPC",
+          "NPCs",
+          "#e82c17"
+        ],
+        location: [
+          "location",
+          "locations",
+          "#1a9e00"
+        ],
+        event: [
+          "event",
+          "events",
+          "#9eabae"
+        ],
+        plotline: [
+          "plotline",
+          "plotlines",
+          "#69d0fc"
+        ],
+        monster: [
+          "monster",
+          "monsters",
+          "#ba40f2"
+        ],
+        item: [
+          "item",
+          "items",
+          "#ffc107"
+        ],
+        pc: [
+          "PC",
+          "PCs",
+          "#deddca"
+        ],
+        stunt: [
+          "stunt",
+          "stunts",
+          "#6e89d8"
+        ],
+        scenario: [
+          "scenario",
+          "scenarios",
+          "#707070"
+        ],
+        note: [
+          "note",
+          "notes",
+          "#f1f0e9"
+        ]
+      }
     },
   });
 
