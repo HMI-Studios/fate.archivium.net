@@ -1,25 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ARCHIVIUM_URL } from '../App';
 import { Link } from 'react-router';
-
-type Campaign = {
-  author_id: number,
-  author_permissions: { [author: number]: number },
-  authors: { [author: number]: string },
-  created_at: Date,
-  discussion_enabled: number,
-  discussion_open: number,
-  followers: { [author: number]: number },
-  id: number,
-  is_public: number,
-  obj_data: any,
-  owner: string,
-  shortname: string,
-  sponsoring_user: any | null,
-  tier: any | null,
-  title: string,
-  updated_at: Date,
-};
+import type { Campaign } from './Campaign';
 
 export default function Home() {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);

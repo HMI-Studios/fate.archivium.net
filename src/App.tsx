@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router';
 import Navbar from './components/Navbar';
+import Campaign from './pages/Campaign';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
 
@@ -37,6 +38,9 @@ export default function App() {
       <Route element={<Navbar user={user} />}>
         <Route index element={<Home />} />
         <Route path='new' element={<NewCampaign />} />
+        <Route path='campaigns'>
+          <Route path=':campaignShortname' element={<Campaign user={user} />} />
+        </Route>
       </Route>
     </Routes>
   );

@@ -38050,11 +38050,13 @@ function App() {
                 /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
                     path: "campaigns",
                     children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
-                        path: ":campaign",
-                        element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Campaign__WEBPACK_IMPORTED_MODULE_4__["default"], {}, void 0, false, {
+                        path: ":campaignShortname",
+                        element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Campaign__WEBPACK_IMPORTED_MODULE_4__["default"], {
+                            user: user
+                        }, void 0, false, {
                             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
                             lineNumber: 42,
-                            columnNumber: 44
+                            columnNumber: 53
                         }, void 0)
                     }, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
@@ -38409,15 +38411,18 @@ function _ts_generator(thisArg, body) {
 
 
 
-function Campaign() {
+function Campaign(props) {
     var _this = this;
-    var _useState = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(null), 2), campaigns = _useState[0], setCampaigns = _useState[1];
+    var user = props.user;
+    var campaignShortname = (0,react_router__WEBPACK_IMPORTED_MODULE_3__.useParams)().campaignShortname;
+    var _useState = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(null), 2), campaign = _useState[0], setCampaign = _useState[1];
+    var _useState1 = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(null), 2), items = _useState1[0], setItems = _useState1[1];
     (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(function() {
-        fetch("".concat(_App__WEBPACK_IMPORTED_MODULE_2__.ARCHIVIUM_URL, "/api/universes"), {
+        fetch("".concat(_App__WEBPACK_IMPORTED_MODULE_2__.ARCHIVIUM_URL, "/api/universes/").concat(campaignShortname), {
             credentials: 'include'
         }).then(function(response) {
             return _async_to_generator(function() {
-                var data;
+                var responseData, data, itemsResponse, itemsData;
                 return _ts_generator(this, function(_state) {
                     switch(_state.label){
                         case 0:
@@ -38426,16 +38431,32 @@ function Campaign() {
                                 response.json()
                             ];
                         case 1:
-                            data = _state.sent().map(function(campaign) {
+                            responseData = _state.sent();
+                            data = _object_spread_props(_object_spread({}, responseData), {
+                                created_at: new Date(responseData.created_at),
+                                updated_at: new Date(responseData.updated_at)
+                            });
+                            return [
+                                4,
+                                fetch("".concat(_App__WEBPACK_IMPORTED_MODULE_2__.ARCHIVIUM_URL, "/api/universes/").concat(campaignShortname, "/items"), {
+                                    credentials: 'include'
+                                })
+                            ];
+                        case 2:
+                            itemsResponse = _state.sent();
+                            return [
+                                4,
+                                itemsResponse.json()
+                            ];
+                        case 3:
+                            itemsData = _state.sent().map(function(item) {
                                 return _object_spread_props(_object_spread({}, campaign), {
-                                    created_at: new Date(campaign.created_at),
-                                    updated_at: new Date(campaign.updated_at),
-                                    obj_data: JSON.parse(campaign.obj_data)
+                                    created_at: new Date(item.created_at),
+                                    updated_at: new Date(item.updated_at)
                                 });
                             });
-                            setCampaigns(data.filter(function(c) {
-                                return c.obj_data.isFateCampaign;
-                            }));
+                            setItems(itemsData);
+                            setCampaign(data);
                             return [
                                 2
                             ];
@@ -38444,56 +38465,115 @@ function Campaign() {
             })();
         });
     }, []);
+    if (!campaign) return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
+        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
+            style: {
+                height: 'calc(50vh + 25px)'
+            },
+            className: "w-100 d-flex justify-center align-end",
+            children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
+                className: "loader"
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 53,
+                columnNumber: 7
+            }, this)
+        }, void 0, false, {
+            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+            lineNumber: 52,
+            columnNumber: 5
+        }, this)
+    }, void 0, false);
     return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
         children: [
             /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("h1", {
+                children: campaign.title
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 58,
+                columnNumber: 5
+            }, this),
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("h2", {
                 children: "Characters"
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
-                lineNumber: 40,
+                lineNumber: 60,
                 columnNumber: 5
             }, this),
-            campaigns ? /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
-                children: [
-                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
-                        className: "link link-animated ml-2",
-                        to: "/new",
-                        children: "New Campaign"
-                    }, void 0, false, {
-                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
-                        lineNumber: 42,
-                        columnNumber: 7
-                    }, this),
-                    campaigns.length > 0 && /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
-                        children: campaigns.map(function(campaign) {
-                            return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
-                                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
-                                    className: "link link-animated",
-                                    to: "/campaigns/".concat(campaign.shortname),
-                                    children: campaign.title
-                                }, void 0, false, {
-                                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
-                                    lineNumber: 45,
-                                    columnNumber: 11
-                                }, _this)
-                            }, campaign.shortname, false, {
-                                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
-                                lineNumber: 44,
-                                columnNumber: 37
-                            }, _this);
-                        })
-                    }, void 0, false, {
-                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
-                        lineNumber: 43,
-                        columnNumber: 32
-                    }, this)
-                ]
-            }, void 0, true) : /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
-                className: "loader ml-2"
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
+                className: "link link-animated ml-2",
+                to: "/campaigns/".concat(campaign.shortname, "/maps/new"),
+                children: "New Character"
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
-                lineNumber: 48,
-                columnNumber: 11
+                lineNumber: 61,
+                columnNumber: 5
+            }, this),
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
+                children: items.filter(function(item) {
+                    return item.item_type === 'pc';
+                }).map(function(item) {
+                    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
+                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
+                            className: "link link-animated",
+                            to: "/campaigns/".concat(campaign.shortname, "/characters/").concat(item.shortname),
+                            children: item.title
+                        }, void 0, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                            lineNumber: 64,
+                            columnNumber: 9
+                        }, _this)
+                    }, item.shortname, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                        lineNumber: 63,
+                        columnNumber: 67
+                    }, _this);
+                })
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 62,
+                columnNumber: 5
+            }, this),
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("h2", {
+                children: "Locations"
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 68,
+                columnNumber: 5
+            }, this),
+            campaign.author_permissions[user.id] >= 3 && /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
+                className: "link link-animated ml-2",
+                to: "/campaigns/".concat(campaign.shortname, "/maps/new"),
+                children: "New Location"
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 69,
+                columnNumber: 51
+            }, this),
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
+                children: items.filter(function(item) {
+                    return item.item_type === 'location';
+                }).map(function(item) {
+                    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
+                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_3__.Link, {
+                            className: "link link-animated",
+                            to: "/campaigns/".concat(campaign.shortname, "/maps/").concat(item.shortname),
+                            children: item.title
+                        }, void 0, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                            lineNumber: 72,
+                            columnNumber: 9
+                        }, _this)
+                    }, item.shortname, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                        lineNumber: 71,
+                        columnNumber: 73
+                    }, _this);
+                })
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Campaign.tsx",
+                lineNumber: 70,
+                columnNumber: 5
             }, this)
         ]
     }, void 0, true);
@@ -38780,7 +38860,7 @@ function Home() {
                 children: "Campaigns"
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
-                lineNumber: 40,
+                lineNumber: 22,
                 columnNumber: 5
             }, this),
             campaigns ? /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
@@ -38791,7 +38871,7 @@ function Home() {
                         children: "New Campaign"
                     }, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
-                        lineNumber: 42,
+                        lineNumber: 24,
                         columnNumber: 7
                     }, this),
                     campaigns.length > 0 && /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
@@ -38803,18 +38883,18 @@ function Home() {
                                     children: campaign.title
                                 }, void 0, false, {
                                     fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
-                                    lineNumber: 45,
+                                    lineNumber: 27,
                                     columnNumber: 11
                                 }, _this)
                             }, campaign.shortname, false, {
                                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
-                                lineNumber: 44,
+                                lineNumber: 26,
                                 columnNumber: 37
                             }, _this);
                         })
                     }, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
-                        lineNumber: 43,
+                        lineNumber: 25,
                         columnNumber: 32
                     }, this)
                 ]
@@ -38822,7 +38902,7 @@ function Home() {
                 className: "loader ml-2"
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\pages\\Home.tsx",
-                lineNumber: 48,
+                lineNumber: 30,
                 columnNumber: 11
             }, this)
         ]
