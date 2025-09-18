@@ -38,7 +38,7 @@ export default function Campaign(props) {
 
       const itemsResponse = await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items`, { credentials: 'include' });
       const itemsData = (await itemsResponse.json()).map((item: any) => ({
-        ...campaign,
+        ...item,
         created_at: new Date(item.created_at),
         updated_at: new Date(item.updated_at),
       }));
@@ -65,8 +65,8 @@ export default function Campaign(props) {
       </li>))}
     </ul>
 
-    <h2>Locations</h2>
-    {campaign.author_permissions[user.id] >= 3 && <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/maps/new`}>New Location</Link>}
+    <h2>Maps</h2>
+    {campaign.author_permissions[user.id] >= 3 && <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/maps/new`}>New Map</Link>}
     <ul>
       {items.filter(item => item.item_type === 'location').map(item => (<li key={item.shortname}>
         <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/maps/${item.shortname}`}>{item.title}</Link>

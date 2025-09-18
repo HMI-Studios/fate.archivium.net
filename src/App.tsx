@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Campaign from './pages/Campaign';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
+import Canvas from './components/Canvas';
 
 export const ARCHIVIUM_URL = 'https://dev.archivium.net';
 
@@ -40,6 +41,9 @@ export default function App() {
         <Route path='new' element={<NewCampaign />} />
         <Route path='campaigns'>
           <Route path=':campaignShortname' element={<Campaign user={user} />} />
+          <Route path=':campaignShortname/maps'>
+            <Route path=':mapShortname' element={<Canvas />} />
+          </Route>
         </Route>
       </Route>
     </Routes>
