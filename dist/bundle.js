@@ -85882,10 +85882,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_1__);
 /* harmony import */ var react_router__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-router */ "./node_modules/react-router/dist/development/chunk-B7RQU5TL.mjs");
 /* harmony import */ var _components_Navbar__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./components/Navbar */ "./src/components/Navbar.tsx");
-/* harmony import */ var _pages_Campaign__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./pages/Campaign */ "./src/pages/Campaign.tsx");
-/* harmony import */ var _pages_Home__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./pages/Home */ "./src/pages/Home.tsx");
-/* harmony import */ var _pages_NewCampaign__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./pages/NewCampaign */ "./src/pages/NewCampaign.tsx");
-/* harmony import */ var _components_Canvas__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ./components/Canvas */ "./src/components/Canvas.tsx");
+/* harmony import */ var _components_SharedCanvas__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./components/SharedCanvas */ "./src/components/SharedCanvas.tsx");
+/* harmony import */ var _pages_Campaign__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./pages/Campaign */ "./src/pages/Campaign.tsx");
+/* harmony import */ var _pages_Home__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./pages/Home */ "./src/pages/Home.tsx");
+/* harmony import */ var _pages_NewCampaign__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ./pages/NewCampaign */ "./src/pages/NewCampaign.tsx");
 function _array_like_to_array(arr, len) {
     if (len == null || len > arr.length) len = arr.length;
     for(var i = 0, arr2 = new Array(len); i < len; i++)arr2[i] = arr[i];
@@ -86139,7 +86139,7 @@ function App() {
             children: [
                 /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
                     index: true,
-                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Home__WEBPACK_IMPORTED_MODULE_5__["default"], {}, void 0, false, {
+                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Home__WEBPACK_IMPORTED_MODULE_6__["default"], {}, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
                         lineNumber: 40,
                         columnNumber: 31
@@ -86151,7 +86151,7 @@ function App() {
                 }, this),
                 /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
                     path: "new",
-                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_NewCampaign__WEBPACK_IMPORTED_MODULE_6__["default"], {}, void 0, false, {
+                    element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_NewCampaign__WEBPACK_IMPORTED_MODULE_7__["default"], {}, void 0, false, {
                         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
                         lineNumber: 41,
                         columnNumber: 36
@@ -86166,7 +86166,7 @@ function App() {
                     children: [
                         /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
                             path: ":campaignShortname",
-                            element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Campaign__WEBPACK_IMPORTED_MODULE_4__["default"], {
+                            element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_pages_Campaign__WEBPACK_IMPORTED_MODULE_5__["default"], {
                                 user: user
                             }, void 0, false, {
                                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
@@ -86182,7 +86182,7 @@ function App() {
                             path: ":campaignShortname/maps",
                             children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_2__.Route, {
                                 path: ":mapShortname",
-                                element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_components_Canvas__WEBPACK_IMPORTED_MODULE_7__["default"], {}, void 0, false, {
+                                element: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(_components_SharedCanvas__WEBPACK_IMPORTED_MODULE_4__["default"], {}, void 0, false, {
                                     fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\App.tsx",
                                     lineNumber: 45,
                                     columnNumber: 50
@@ -86219,16 +86219,108 @@ function App() {
 
 /***/ }),
 
-/***/ "./src/components/Canvas.tsx":
+/***/ "./src/components/Navbar.tsx":
 /*!***********************************!*\
-  !*** ./src/components/Canvas.tsx ***!
+  !*** ./src/components/Navbar.tsx ***!
   \***********************************/
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   "default": () => (/* binding */ Canvas)
+/* harmony export */   "default": () => (/* binding */ Navbar)
+/* harmony export */ });
+/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ "./node_modules/react/jsx-dev-runtime.js");
+/* harmony import */ var react_router__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react-router */ "./node_modules/react-router/dist/development/chunk-B7RQU5TL.mjs");
+
+
+function Navbar(props) {
+    var user = props.user;
+    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
+        children: [
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("header", {
+                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("nav", {
+                    className: "navbar mb-0",
+                    children: [
+                        /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
+                            className: "navbarBtns shrink-1 scroll-x"
+                        }, void 0, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                            lineNumber: 13,
+                            columnNumber: 9
+                        }, this),
+                        /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
+                            className: "navbarBtns",
+                            children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
+                                className: "navbarBtn",
+                                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("span", {
+                                    className: "navbarBtnLink navbarText",
+                                    children: [
+                                        "Logged in as ",
+                                        user.username
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                                    lineNumber: 16,
+                                    columnNumber: 13
+                                }, this)
+                            }, void 0, false, {
+                                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                                lineNumber: 15,
+                                columnNumber: 11
+                            }, this)
+                        }, void 0, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                            lineNumber: 14,
+                            columnNumber: 9
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                    lineNumber: 12,
+                    columnNumber: 7
+                }, this)
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                lineNumber: 11,
+                columnNumber: 5
+            }, this),
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("main", {
+                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
+                    className: "page",
+                    children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_1__.Outlet, {}, void 0, false, {
+                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                        lineNumber: 24,
+                        columnNumber: 9
+                    }, this)
+                }, void 0, false, {
+                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                    lineNumber: 23,
+                    columnNumber: 7
+                }, this)
+            }, void 0, false, {
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
+                lineNumber: 22,
+                columnNumber: 5
+            }, this)
+        ]
+    }, void 0, true);
+}
+
+
+/***/ }),
+
+/***/ "./src/components/SharedCanvas.tsx":
+/*!*****************************************!*\
+  !*** ./src/components/SharedCanvas.tsx ***!
+  \*****************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ SharedCanvas),
+/* harmony export */   initY: () => (/* binding */ initY)
 /* harmony export */ });
 /* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ "./node_modules/react/jsx-dev-runtime.js");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
@@ -86236,6 +86328,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var react_konva__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react-konva */ "./node_modules/react-konva/es/ReactKonva.js");
 /* harmony import */ var y_webrtc__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! y-webrtc */ "./node_modules/y-webrtc/src/y-webrtc.js");
 /* harmony import */ var yjs__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! yjs */ "./node_modules/yjs/dist/yjs.mjs");
+// SharedCanvas.tsx
 function _array_like_to_array(arr, len) {
     if (len == null || len > arr.length) len = arr.length;
     for(var i = 0, arr2 = new Array(len); i < len; i++)arr2[i] = arr[i];
@@ -86339,176 +86432,191 @@ function _unsupported_iterable_to_array(o, minLen) {
 
 
 
-function Canvas() {
+function initY(roomName) {
+    var ydoc = new yjs__WEBPACK_IMPORTED_MODULE_4__.Doc();
+    var provider = new y_webrtc__WEBPACK_IMPORTED_MODULE_3__.WebrtcProvider(roomName, ydoc, {
+        signaling: [
+            'wss://hmi.dynu.net/yjs'
+        ],
+        peerOpts: {
+            config: {
+                iceServers: [
+                    {
+                        urls: 'stun:stun.l.google.com:19302'
+                    }
+                ]
+            }
+        }
+    });
+    // Y.Array of generic objects
+    var yShapes = ydoc.getArray('shapes');
+    return {
+        ydoc: ydoc,
+        provider: provider,
+        yShapes: yShapes
+    };
+}
+function SharedCanvas(param) {
     var _this = this;
-    var _useState = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(null), 2), yShapes = _useState[0], setYShapes = _useState[1];
+    var _param_room = param.room, room = _param_room === void 0 ? 'my-canvas-room' : _param_room;
+    // Konva Stage reference
+    var stageRef = (0,react__WEBPACK_IMPORTED_MODULE_1__.useRef)(null);
+    var _useState = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)([]), 2), shapes = _useState[0], setShapes = _useState[1];
+    var _useState1 = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(false), 2), drawing = _useState1[0], setDrawing = _useState1[1];
+    // Hold Y objects outside state
+    var yRef = (0,react__WEBPACK_IMPORTED_MODULE_1__.useRef)(undefined);
     (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(function() {
-        var roomName = 'my-canvas-room';
-        var ydoc = new yjs__WEBPACK_IMPORTED_MODULE_4__.Doc();
-        var provider = new y_webrtc__WEBPACK_IMPORTED_MODULE_3__.WebrtcProvider(roomName, ydoc, {
-            signaling: [
-                'wss://signaling.yjs.dev'
-            ],
-            password: undefined
-        });
-        var yArray = ydoc.getArray('shapes');
-        setYShapes(yArray);
+        var _initY = initY(room), ydoc = _initY.ydoc, provider = _initY.provider, yShapes = _initY.yShapes;
+        yRef.current = {
+            ydoc: ydoc,
+            provider: provider,
+            yShapes: yShapes
+        };
+        var update = function() {
+            return setShapes(yShapes.toArray());
+        };
+        yShapes.observeDeep(update);
+        update();
         return function() {
+            yShapes.unobserveDeep(update);
             provider.destroy();
             ydoc.destroy();
         };
-    }, []);
-    if (!yShapes) return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
-        children: "Loading shared room…"
-    }, void 0, false, {
-        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Canvas.tsx",
-        lineNumber: 27,
-        columnNumber: 24
-    }, this);
+    }, [
+        room
+    ]);
+    var addRect = function() {
+        var _yRef_current;
+        var rect = {
+            id: "rect-".concat(Date.now()),
+            type: 'rect',
+            x: 50 + Math.random() * 200,
+            y: 50 + Math.random() * 200,
+            width: 100,
+            height: 80,
+            fill: 'skyblue'
+        };
+        (_yRef_current = yRef.current) === null || _yRef_current === void 0 ? void 0 : _yRef_current.yShapes.push([
+            rect
+        ]);
+    };
     var handleDragMove = function(id, e) {
         var node = e.target;
-        var idx = yShapes.toArray().findIndex(function(s) {
+        var idx = shapes.findIndex(function(s) {
             return s.id === id;
         });
-        if (idx >= 0) {
-            yShapes.delete(idx, 1);
-            yShapes.insert(idx, [
-                _object_spread_props(_object_spread({}, yShapes[idx]), {
-                    x: node.x(),
-                    y: node.y()
-                })
-            ]);
-        }
+        if (idx < 0 || !yRef.current) return;
+        var updated = shapes[idx].type === 'rect' ? _object_spread_props(_object_spread({}, shapes[idx]), {
+            x: node.x(),
+            y: node.y()
+        }) : _object_spread({}, shapes[idx]);
+        var yShapes = yRef.current.yShapes;
+        yShapes.delete(idx, 1);
+        yShapes.insert(idx, [
+            updated
+        ]);
     };
-    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Stage, {
-        width: 800,
-        height: 600,
-        style: {
-            border: '1px solid black'
-        },
-        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Layer, {
-            children: yShapes.map(function(s) {
-                return s.type === 'text' ? /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Text, _object_spread_props(_object_spread({}, s), {
-                    draggable: true,
-                    onDragMove: function(e) {
-                        return handleDragMove(s.id, e);
-                    }
-                }), s.id, false, {
-                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Canvas.tsx",
-                    lineNumber: 43,
-                    columnNumber: 13
-                }, _this) : /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Rect, _object_spread_props(_object_spread({}, s), {
-                    draggable: true,
-                    onDragMove: function(e) {
-                        return handleDragMove(s.id, e);
-                    }
-                }), s.id, false, {
-                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Canvas.tsx",
-                    lineNumber: 45,
-                    columnNumber: 13
-                }, _this);
-            })
-        }, void 0, false, {
-            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Canvas.tsx",
-            lineNumber: 40,
-            columnNumber: 7
-        }, this)
-    }, void 0, false, {
-        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Canvas.tsx",
-        lineNumber: 39,
-        columnNumber: 5
-    }, this);
-}
-
-
-/***/ }),
-
-/***/ "./src/components/Navbar.tsx":
-/*!***********************************!*\
-  !*** ./src/components/Navbar.tsx ***!
-  \***********************************/
-/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-/* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   "default": () => (/* binding */ Navbar)
-/* harmony export */ });
-/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ "./node_modules/react/jsx-dev-runtime.js");
-/* harmony import */ var react_router__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react-router */ "./node_modules/react-router/dist/development/chunk-B7RQU5TL.mjs");
-
-
-function Navbar(props) {
-    var user = props.user;
-    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.Fragment, {
+    var startDraw = function(e) {
+        if (!yRef.current) return;
+        setDrawing(true);
+        var pos = e.target.getStage().getPointerPosition();
+        var newLine = {
+            id: "line-".concat(Date.now()),
+            type: 'line',
+            points: [
+                pos.x,
+                pos.y
+            ],
+            stroke: 'black',
+            strokeWidth: 2,
+            lineCap: 'round',
+            lineJoin: 'round'
+        };
+        yRef.current.yShapes.push([
+            newLine
+        ]);
+    };
+    var draw = function(e) {
+        if (!drawing || !yRef.current) return;
+        var stage = e.target.getStage();
+        var point = stage.getPointerPosition();
+        var idx = shapes.length - 1;
+        if (idx < 0) return;
+        var last = shapes[idx];
+        if (last.type !== 'line') return;
+        var updated = _object_spread_props(_object_spread({}, last), {
+            points: last.points.concat([
+                point.x,
+                point.y
+            ])
+        });
+        var yShapes = yRef.current.yShapes;
+        yShapes.delete(idx, 1);
+        yShapes.insert(idx, [
+            updated
+        ]);
+    };
+    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
         children: [
-            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("header", {
-                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("nav", {
-                    className: "navbar mb-0",
-                    children: [
-                        /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
-                            className: "navbarBtns shrink-1 scroll-x"
-                        }, void 0, false, {
-                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                            lineNumber: 13,
-                            columnNumber: 9
-                        }, this),
-                        /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("ul", {
-                            className: "navbarBtns",
-                            children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("li", {
-                                className: "navbarBtn",
-                                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("span", {
-                                    className: "navbarBtnLink navbarText",
-                                    children: [
-                                        "Logged in as ",
-                                        user.username
-                                    ]
-                                }, void 0, true, {
-                                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                                    lineNumber: 16,
-                                    columnNumber: 13
-                                }, this)
-                            }, void 0, false, {
-                                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                                lineNumber: 15,
-                                columnNumber: 11
-                            }, this)
-                        }, void 0, false, {
-                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                            lineNumber: 14,
-                            columnNumber: 9
-                        }, this)
-                    ]
-                }, void 0, true, {
-                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                    lineNumber: 12,
-                    columnNumber: 7
-                }, this)
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("button", {
+                onClick: addRect,
+                children: "Add Rectangle"
             }, void 0, false, {
-                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                lineNumber: 11,
-                columnNumber: 5
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
+                lineNumber: 143,
+                columnNumber: 7
             }, this),
-            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("main", {
-                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
-                    className: "page",
-                    children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_router__WEBPACK_IMPORTED_MODULE_1__.Outlet, {}, void 0, false, {
-                        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                        lineNumber: 24,
-                        columnNumber: 9
-                    }, this)
+            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Stage, {
+                ref: stageRef,
+                width: 800,
+                height: 600,
+                style: {
+                    border: '1px solid #aaa',
+                    marginTop: 10
+                },
+                onMouseDown: startDraw,
+                onMousemove: draw,
+                onMouseup: function() {
+                    return setDrawing(false);
+                },
+                onTouchStart: startDraw,
+                onTouchMove: draw,
+                onTouchEnd: function() {
+                    return setDrawing(false);
+                },
+                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Layer, {
+                    children: shapes.map(function(s) {
+                        return s.type === 'rect' ? /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Rect, _object_spread_props(_object_spread({}, s), {
+                            draggable: true,
+                            onDragMove: function(e) {
+                                return handleDragMove(s.id, e);
+                            }
+                        }), s.id, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
+                            lineNumber: 159,
+                            columnNumber: 15
+                        }, _this) : /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Line, _object_spread({}, s), s.id, false, {
+                            fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
+                            lineNumber: 166,
+                            columnNumber: 15
+                        }, _this);
+                    })
                 }, void 0, false, {
-                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                    lineNumber: 23,
-                    columnNumber: 7
+                    fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
+                    lineNumber: 156,
+                    columnNumber: 9
                 }, this)
             }, void 0, false, {
-                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\Navbar.tsx",
-                lineNumber: 22,
-                columnNumber: 5
+                fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
+                lineNumber: 144,
+                columnNumber: 7
             }, this)
         ]
-    }, void 0, true);
+    }, void 0, true, {
+        fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
+        lineNumber: 142,
+        columnNumber: 5
+    }, this);
 }
 
 
