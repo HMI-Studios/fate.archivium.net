@@ -86459,11 +86459,10 @@ function initY(roomName) {
 function SharedCanvas(param) {
     var _this = this;
     var _param_room = param.room, room = _param_room === void 0 ? 'my-canvas-room' : _param_room;
-    // Konva Stage reference
     var stageRef = (0,react__WEBPACK_IMPORTED_MODULE_1__.useRef)(null);
     var _useState = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)([]), 2), shapes = _useState[0], setShapes = _useState[1];
     var _useState1 = _sliced_to_array((0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(false), 2), drawing = _useState1[0], setDrawing = _useState1[1];
-    // Hold Y objects outside state
+    var myLineIndex = (0,react__WEBPACK_IMPORTED_MODULE_1__.useRef)(null);
     var yRef = (0,react__WEBPACK_IMPORTED_MODULE_1__.useRef)(undefined);
     (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(function() {
         var _initY = initY(room), ydoc = _initY.ydoc, provider = _initY.provider, yShapes = _initY.yShapes;
@@ -86486,9 +86485,10 @@ function SharedCanvas(param) {
         room
     ]);
     var addRect = function() {
-        var _yRef_current;
+        if (!yRef.current) return;
         var rect = {
             id: "rect-".concat(Date.now()),
+            clientID: yRef.current.ydoc.clientID,
             type: 'rect',
             x: 50 + Math.random() * 200,
             y: 50 + Math.random() * 200,
@@ -86496,7 +86496,7 @@ function SharedCanvas(param) {
             height: 80,
             fill: 'skyblue'
         };
-        (_yRef_current = yRef.current) === null || _yRef_current === void 0 ? void 0 : _yRef_current.yShapes.push([
+        yRef.current.yShapes.push([
             rect
         ]);
     };
@@ -86522,6 +86522,7 @@ function SharedCanvas(param) {
         var pos = e.target.getStage().getPointerPosition();
         var newLine = {
             id: "line-".concat(Date.now()),
+            clientID: yRef.current.ydoc.clientID,
             type: 'line',
             points: [
                 pos.x,
@@ -86532,29 +86533,34 @@ function SharedCanvas(param) {
             lineCap: 'round',
             lineJoin: 'round'
         };
-        yRef.current.yShapes.push([
+        var yShapes = yRef.current.yShapes;
+        myLineIndex.current = yShapes.length;
+        yShapes.push([
             newLine
         ]);
     };
     var draw = function(e) {
         if (!drawing || !yRef.current) return;
-        var stage = e.target.getStage();
-        var point = stage.getPointerPosition();
-        var idx = shapes.length - 1;
-        if (idx < 0) return;
-        var last = shapes[idx];
-        if (last.type !== 'line') return;
-        var updated = _object_spread_props(_object_spread({}, last), {
-            points: last.points.concat([
+        var point = e.target.getStage().getPointerPosition();
+        var idx = myLineIndex.current;
+        if (idx == null) return;
+        var yShapes = yRef.current.yShapes;
+        var current = yShapes.get(idx);
+        if (current.clientID !== yRef.current.ydoc.clientID) return;
+        var updated = _object_spread_props(_object_spread({}, current), {
+            points: current.points.concat([
                 point.x,
                 point.y
             ])
         });
-        var yShapes = yRef.current.yShapes;
         yShapes.delete(idx, 1);
         yShapes.insert(idx, [
             updated
         ]);
+    };
+    var endDraw = function() {
+        setDrawing(false);
+        myLineIndex.current = null; // release ownership
     };
     return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)("div", {
         children: [
@@ -86563,7 +86569,7 @@ function SharedCanvas(param) {
                 children: "Add Rectangle"
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
-                lineNumber: 143,
+                lineNumber: 158,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Stage, {
@@ -86576,14 +86582,10 @@ function SharedCanvas(param) {
                 },
                 onMouseDown: startDraw,
                 onMousemove: draw,
-                onMouseup: function() {
-                    return setDrawing(false);
-                },
+                onMouseup: endDraw,
                 onTouchStart: startDraw,
                 onTouchMove: draw,
-                onTouchEnd: function() {
-                    return setDrawing(false);
-                },
+                onTouchEnd: endDraw,
                 children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Layer, {
                     children: shapes.map(function(s) {
                         return s.type === 'rect' ? /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Rect, _object_spread_props(_object_spread({}, s), {
@@ -86593,28 +86595,28 @@ function SharedCanvas(param) {
                             }
                         }), s.id, false, {
                             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
-                            lineNumber: 159,
+                            lineNumber: 174,
                             columnNumber: 15
                         }, _this) : /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(react_konva__WEBPACK_IMPORTED_MODULE_2__.Line, _object_spread({}, s), s.id, false, {
                             fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
-                            lineNumber: 166,
+                            lineNumber: 181,
                             columnNumber: 15
                         }, _this);
                     })
                 }, void 0, false, {
                     fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
-                    lineNumber: 156,
+                    lineNumber: 171,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
-                lineNumber: 144,
+                lineNumber: 159,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "C:\\Users\\Johannes\\Documents\\GitHub\\fate.archivium.net\\src\\components\\SharedCanvas.tsx",
-        lineNumber: 142,
+        lineNumber: 157,
         columnNumber: 5
     }, this);
 }

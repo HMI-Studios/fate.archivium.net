@@ -5,8 +5,12 @@ import { Layer, Line, Rect, Stage } from 'react-konva';
 import { WebrtcProvider } from 'y-webrtc';
 import * as Y from 'yjs';
 
-export type RectShape = {
+export type BaseShape = {
   id: string;
+  clientID: number;   // 👈 identify the author
+};
+
+export type RectShape = BaseShape & {
   type: 'rect';
   x: number;
   y: number;
@@ -15,8 +19,7 @@ export type RectShape = {
   fill: string;
 };
 
-export type LineShape = {
-  id: string;
+export type LineShape = BaseShape & {
   type: 'line';
   points: number[];
   stroke: string;
@@ -42,17 +45,18 @@ export function initY(roomName: string) {
 }
 
 interface Props {
+  user: any,
   room?: string;
 }
 
 export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
-  // Konva Stage reference
   const stageRef = useRef<Konva.Stage | null>(null);
 
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [drawing, setDrawing] = useState(false);
 
-  // Hold Y objects outside state
+  const myLineIndex = useRef<number | null>(null);
+
   const yRef = useRef<{
     ydoc: Y.Doc;
     provider: any;
@@ -75,8 +79,11 @@ export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
   }, [room]);
 
   const addRect = () => {
+    if (!yRef.current) return;
+
     const rect: RectShape = {
       id: `rect-${Date.now()}`,
+      clientID: yRef.current.ydoc.clientID,
       type: 'rect',
       x: 50 + Math.random() * 200,
       y: 50 + Math.random() * 200,
@@ -84,7 +91,7 @@ export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
       height: 80,
       fill: 'skyblue'
     };
-    yRef.current?.yShapes.push([rect]);
+    yRef.current.yShapes.push([rect]);
   };
 
   const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
@@ -108,6 +115,7 @@ export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
     const pos = e.target.getStage()!.getPointerPosition()!;
     const newLine: LineShape = {
       id: `line-${Date.now()}`,
+      clientID: yRef.current.ydoc.clientID,
       type: 'line',
       points: [pos.x, pos.y],
       stroke: 'black',
@@ -115,27 +123,34 @@ export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
       lineCap: 'round',
       lineJoin: 'round'
     };
-    yRef.current.yShapes.push([newLine]);
+    const yShapes = yRef.current.yShapes;
+    myLineIndex.current = yShapes.length;
+    yShapes.push([newLine]);
   };
 
   const draw = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     if (!drawing || !yRef.current) return;
-    const stage = e.target.getStage()!;
-    const point = stage.getPointerPosition()!;
-    const idx = shapes.length - 1;
-    if (idx < 0) return;
-
-    const last = shapes[idx];
-    if (last.type !== 'line') return;
-
-    const updated: LineShape = {
-      ...last,
-      points: last.points.concat([point.x, point.y])
-    };
+    const point = e.target.getStage()!.getPointerPosition()!;
+    const idx = myLineIndex.current;
+    if (idx == null) return;
 
     const yShapes = yRef.current.yShapes;
+    const current = yShapes.get(idx) as LineShape;
+
+    if (current.clientID !== yRef.current.ydoc.clientID) return;
+
+    const updated: LineShape = {
+      ...current,
+      points: current.points.concat([point.x, point.y])
+    };
+
     yShapes.delete(idx, 1);
     yShapes.insert(idx, [updated]);
+  };
+
+  const endDraw = () => {
+    setDrawing(false);
+    myLineIndex.current = null; // release ownership
   };
 
   return (
@@ -148,10 +163,10 @@ export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
         style={{ border: '1px solid #aaa', marginTop: 10 }}
         onMouseDown={startDraw}
         onMousemove={draw}
-        onMouseup={() => setDrawing(false)}
+        onMouseup={endDraw}
         onTouchStart={startDraw}
         onTouchMove={draw}
-        onTouchEnd={() => setDrawing(false)}
+        onTouchEnd={endDraw}
       >
         <Layer>
           {shapes.map(s =>
