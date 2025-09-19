@@ -1,9 +1,11 @@
-// SharedCanvas.tsx
 import Konva from 'konva';
 import { useEffect, useRef, useState } from 'react';
 import { Layer, Line, Rect, Stage } from 'react-konva';
+import { useParams } from 'react-router';
 import { WebrtcProvider } from 'y-webrtc';
 import * as Y from 'yjs';
+import { ARCHIVIUM_URL } from '../App';
+import { debounce } from '../util';
 
 export type BaseShape = {
   id: string;
@@ -45,11 +47,13 @@ export function initY(roomName: string) {
 }
 
 interface Props {
-  user: any,
-  room?: string;
+  user: any;
 }
 
-export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
+export default function Map({ user }: Props) {
+  const { campaignShortname, mapShortname } = useParams();
+  if (!mapShortname) return <>No map specified!</>;
+
   const stageRef = useRef<Konva.Stage | null>(null);
 
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -63,20 +67,38 @@ export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
     yShapes: Y.Array<Shape>;
   }>(undefined);
 
-  useEffect(() => {
-    const { ydoc, provider, yShapes } = initY(room);
-    yRef.current = { ydoc, provider, yShapes };
+    useEffect(() => {
+      const { ydoc, provider, yShapes } = initY(`fate/${campaignShortname}/${mapShortname}`);
+      yRef.current = { ydoc, provider, yShapes };
 
-    const update = () => setShapes(yShapes.toArray());
-    yShapes.observeDeep(update);
-    update();
+      const update = () => setShapes(yShapes.toArray());
+      yShapes.observeDeep(update);
+      update();
 
-    return () => {
-      yShapes.unobserveDeep(update);
-      provider.destroy();
-      ydoc.destroy();
-    };
-  }, [room]);
+      ydoc.on('update', (_, origin) => {
+        debounce('map-save', async () => {
+          await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${mapShortname}`, {
+            credentials: 'include',
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title: mapShortname,
+              obj_data: {
+                mapData: yShapes.toArray(),
+              },
+            }),
+          });
+        }, 500);
+      });
+
+      return () => {
+        yShapes.unobserveDeep(update);
+        provider.destroy();
+        ydoc.destroy();
+      };
+  }, []);
 
   const addRect = () => {
     if (!yRef.current) return;
@@ -150,7 +172,7 @@ export default function SharedCanvas({ room = 'my-canvas-room' }: Props) {
 
   const endDraw = () => {
     setDrawing(false);
-    myLineIndex.current = null; // release ownership
+    myLineIndex.current = null;
   };
 
   return (

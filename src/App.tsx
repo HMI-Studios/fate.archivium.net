@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router';
 import Navbar from './components/Navbar';
-import SharedCanvas from './components/SharedCanvas';
 import Campaign from './pages/Campaign';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
+import Map from './pages/Map';
 
 export const ARCHIVIUM_URL = 'https://dev.archivium.net';
 
@@ -42,7 +42,7 @@ export default function App() {
         <Route path='campaigns'>
           <Route path=':campaignShortname' element={<Campaign user={user} />} />
           <Route path=':campaignShortname/maps'>
-            <Route path=':mapShortname' element={<SharedCanvas />} />
+            <Route path=':mapShortname' element={<Map user={user} />} />
           </Route>
         </Route>
       </Route>
