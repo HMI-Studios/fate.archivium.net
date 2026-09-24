@@ -1,0 +1,65 @@
+// A conflict's turn order, kept in the scene's live doc (the `combat` map, key
+// `state`) and saved to the scene item as obj_data.combat. Combatants are tokens on
+// the map, so several tokens of the same monster each get a turn.
+
+export type ConflictKind = 'physical' | 'mental';
+
+export type CombatState = {
+  kind: ConflictKind;
+  round: number;
+  // Token ids in turn order.
+  order: string[];
+  // The token whose turn it is.
+  current: string | null;
+};
+
+// Fate Core's turn order: highest skill first, ties broken by the next skill.
+export const INITIATIVE_SKILLS: { [kind in ConflictKind]: string[] } = {
+  physical: ['Notice', 'Athletics', 'Physique'],
+  mental: ['Empathy', 'Rapport', 'Will'],
+};
+
+export const CONFLICT_LABELS: { [kind in ConflictKind]: string } = {
+  physical: 'Physical conflict',
+  mental: 'Mental conflict',
+};
+
+export type Combatant = {
+  tokenId: string;
+  shortname: string;
+};
+
+export function initiativeOrder(combatants: Combatant[], kind: ConflictKind, skillsOf: (shortname: string) => { [skill: string]: number }): string[] {
+  const score = (c: Combatant) => INITIATIVE_SKILLS[kind].map(skill => skillsOf(c.shortname)[skill] ?? 0);
+  return [...combatants]
+    .sort((a, b) => {
+      const [sa, sb] = [score(a), score(b)];
+      for (let i = 0; i < sa.length; i++) {
+        if (sa[i] !== sb[i]) return sb[i] - sa[i];
+      }
+      return 0;
+    })
+    .map(c => c.tokenId);
+}
+
+// The turn after (or before) the current one, skipping tokens no longer on the map.
+// Wrapping past the end starts a new round.
+export function stepTurn(state: CombatState, present: Set<string>, direction: 1 | -1): CombatState {
+  const order = state.order.filter(id => present.has(id));
+  if (order.length === 0) return { ...state, current: null };
+  const index = state.current ? order.indexOf(state.current) : -1;
+  if (index < 0) return { ...state, current: order[0] };
+  const next = index + direction;
+  if (next >= order.length) return { ...state, current: order[0], round: state.round + 1 };
+  if (next < 0) return state.round > 1 ? { ...state, current: order[order.length - 1], round: state.round - 1 } : state;
+  return { ...state, current: order[next] };
+}
+
+export function moveInOrder(state: CombatState, tokenId: string, direction: 1 | -1): CombatState {
+  const order = [...state.order];
+  const i = order.indexOf(tokenId);
+  const j = i + direction;
+  if (i < 0 || j < 0 || j >= order.length) return state;
+  [order[i], order[j]] = [order[j], order[i]];
+  return { ...state, order };
+}

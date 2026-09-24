@@ -4,6 +4,7 @@ import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Ta
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
 import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { initiativeOrder, moveInOrder, stepTurn, type CombatState, type ConflictKind } from '../fate/combat';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
@@ -12,6 +13,7 @@ import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
 import { useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
+import CombatTracker, { type CombatEntry } from './CombatTracker';
 import DiceRoller, { type InvokableAspect } from './DiceRoller';
 
 export type BaseShape = {
@@ -140,6 +142,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [savedShapes, setSavedShapes] = useState<Shape[] | null>(null);
   const [liveAspects, setLiveAspects] = useState<SceneAspect[]>([]);
   const [liveRolls, setLiveRolls] = useState<Roll[]>([]);
+  const [liveCombat, setLiveCombat] = useState<CombatState | null>(null);
+  const [savedCombat, setSavedCombat] = useState<CombatState | null>(null);
   const [savedAspects, setSavedAspects] = useState<SceneAspect[]>([]);
   // Sheet data of the characters in the scene, for their temporary aspects, skills and fate points.
   const [sheets, setSheets] = useState<{ [shortname: string]: Record<string, unknown> }>({});
@@ -169,6 +173,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const yAspects = ydoc?.getMap<SceneAspect>('aspects');
   // Recent dice rolls. Live only: they aren't saved to the scene item.
   const yRolls = ydoc?.getMap<Roll>('rolls');
+  // The conflict's turn order, if one is running (key `state`).
+  const yCombat = ydoc?.getMap<CombatState>('combat');
 
   useEffect(() => {
     fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items`, { credentials: 'include' }).then(async (response) => {
@@ -195,16 +201,18 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       // Scenes saved before scene sheets kept their aspects in obj_data.sceneAspects.
       const sceneSheetAspects = objData?.[SCENE_ROOT]?.[SCENE_ASPECTS_KEY];
       setSavedAspects(sceneSheetAspects !== undefined ? fromSceneSheet(sceneSheetAspects) : (objData?.sceneAspects ?? []));
+      setSavedCombat(objData?.combat ?? null);
       setSavedShapes(objData?.mapData ?? []);
     });
   }, [campaignShortname, sceneShortname]);
 
   useEffect(() => {
-    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yRolls) return;
+    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yRolls || !yCombat) return;
 
     const updateShapes = () => setLiveShapes(Array.from(yShapes.values()));
     const updateAspects = () => setLiveAspects(Array.from(yAspects.values()));
     const updateRolls = () => setLiveRolls(Array.from(yRolls.values()).sort((a, b) => b.at - a.at));
+    const updateCombat = () => setLiveCombat(yCombat.get('state') ?? null);
     const updateMeta = () => {
       if (!yMeta.has('width')) return;
       setMeta({
@@ -217,10 +225,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     yMeta.observe(updateMeta);
     yAspects.observe(updateAspects);
     yRolls.observe(updateRolls);
+    yCombat.observe(updateCombat);
     updateShapes();
     updateMeta();
     updateAspects();
     updateRolls();
+    updateCombat();
 
     // Persist our own edits; updates that arrive from the server were saved by
     // whoever made them. The data endpoint merges into obj_data, so this leaves
@@ -239,6 +249,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
           },
           body: JSON.stringify({
             mapData: Array.from(yShapes.values()),
+            combat: yCombat.get('state') ?? null,
             ...(sceneSheet ? { [SCENE_ROOT]: { ...sceneSheet, [SCENE_ASPECTS_KEY]: toSceneSheet(Array.from(yAspects.values())) } } : {}),
           }),
         });
@@ -251,6 +262,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       yMeta.unobserve(updateMeta);
       yAspects.unobserve(updateAspects);
       yRolls.unobserve(updateRolls);
+      yCombat.unobserve(updateCombat);
       ydoc.off('update', onUpdate);
     };
   }, [ydoc]);
@@ -259,11 +271,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // server last started. Shapes are keyed by id, so two clients seeding at once
   // converge instead of duplicating.
   useEffect(() => {
-    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || savedShapes === null || seeded.current) return;
+    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || !yCombat || savedShapes === null || seeded.current) return;
     seeded.current = true;
     ydoc.transact(() => {
       if (yShapes.size === 0) savedShapes.forEach(shape => yShapes.set(shape.id, shape));
       if (yAspects.size === 0) savedAspects.forEach(aspect => yAspects.set(aspect.id, aspect));
+      if (!yCombat.has('state') && savedCombat) yCombat.set('state', savedCombat);
       if (!yMeta.has('width')) {
         yMeta.set('width', meta.width);
         yMeta.set('height', meta.height);
@@ -319,6 +332,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const showLive = live && (liveShapes.length > 0 || liveAspects.length > 0 || canEdit);
   const shapes = showLive ? liveShapes : (savedShapes ?? []);
   const aspects = showLive ? liveAspects : savedAspects;
+  const combat = showLive ? liveCombat : savedCombat;
 
   // One entry per character with a token in the scene.
   const characters: SceneCharacter[] = [];
@@ -328,6 +342,44 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     }
   }
   const characterKey = characters.map(c => c.shortname).sort().join(',');
+
+  const portraitUrl = (shortname: string) => {
+    const id = portraitId(sheets[shortname]);
+    return id === null ? null : galleryImageUrl(campaignShortname, shortname, id);
+  };
+
+  // Every token is a combatant; several tokens of one character are numbered.
+  const tokens = shapes.filter((shape): shape is TokenShape => shape.type === 'token');
+  const combatEntries: CombatEntry[] = tokens.map(token => {
+    const same = tokens.filter(t => t.itemShortname === token.itemShortname);
+    return {
+      tokenId: token.id,
+      label: same.length > 1 ? `${token.itemTitle} ${same.indexOf(token) + 1}` : token.itemTitle,
+      color: token.color,
+      portraitUrl: portraitUrl(token.itemShortname),
+    };
+  });
+
+  const setCombat = (next: CombatState | null) => {
+    if (!canEdit || !yCombat) return;
+    if (next) yCombat.set('state', next);
+    else yCombat.delete('state');
+  };
+
+  const startCombat = (kind: ConflictKind) => {
+    const order = initiativeOrder(tokens.map(t => ({ tokenId: t.id, shortname: t.itemShortname })), kind, shortname => skillRatings(sheets[shortname]));
+    setCombat({ kind, round: 1, order, current: order[0] ?? null });
+  };
+
+  const presentTokens = () => new Set(tokens.map(t => t.id));
+
+  const removeCombatant = (tokenId: string) => {
+    if (!combat) return;
+    // Removing whoever's turn it is passes the turn on first.
+    const passed = combat.current === tokenId ? stepTurn(combat, presentTokens(), 1) : combat;
+    const order = passed.order.filter(id => id !== tokenId);
+    setCombat({ ...passed, order, current: passed.current === tokenId ? order[0] ?? null : passed.current });
+  };
 
   const sheetAspects: { [shortname: string]: SheetAspect[] } = Object.fromEntries(Object.entries(sheets).map(([shortname, root]) => {
     const list = root[TEMPORARY_ASPECTS_KEY];
@@ -385,11 +437,6 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const name = sheetAspects[shortname]?.[index]?.name;
     if (list[index]?.name === name) return index;
     return list.findIndex(entry => entry.name === name);
-  };
-
-  const portraitUrl = (shortname: string) => {
-    const id = portraitId(sheets[shortname]);
-    return id === null ? null : galleryImageUrl(campaignShortname, shortname, id);
   };
 
   // Tags beside a character's token: its sheet's temporary aspects, then the scene's.
@@ -724,6 +771,17 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   return (
     <div>
+      <CombatTracker
+        state={combat}
+        entries={combatEntries}
+        canRun={canEdit && gm}
+        onStart={startCombat}
+        onStep={direction => combat && setCombat(stepTurn(combat, presentTokens(), direction))}
+        onEnd={() => setCombat(null)}
+        onMove={(tokenId, direction) => combat && setCombat(moveInOrder(combat, tokenId, direction))}
+        onRemove={removeCombatant}
+        onAdd={tokenId => combat && setCombat({ ...combat, order: [...combat.order, tokenId], current: combat.current ?? tokenId })}
+      />
       {doc?.status === 'connecting' && <p className='ma-0 mb-1'><small>Connecting to the live scene…</small></p>}
       {doc?.status === 'offline' && <p className='ma-0 mb-1'><small>Live sync is unavailable, so this is the last saved version and can't be edited.</small></p>}
       {canEdit && <div>
@@ -829,6 +887,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                       onDragMove={e => handleDragMove(s.id, e)}
                       onDragEnd={e => handleDragMove(s.id, e)}
                     >
+                      {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
                       <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
                       <Text text={s.itemTitle} y={24} offsetX={20} width={40} align='center' fontSize={12} />
                       {/* The character's aspects in play, as tags beside the token. */}
