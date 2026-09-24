@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
+import { saveSheetChanges } from '../fate/sheetData';
 import { type SheetLayout } from '../layout/core';
 import { layoutForType } from '../layout/typeConfig';
 import SheetRenderer from '../layout/SheetRenderer';
@@ -21,6 +22,8 @@ export default function Character() {
   const [data, setData] = useState<unknown>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  // The sheet data as last loaded or saved, to work out what the user changed.
+  const base = useRef<unknown>(null);
 
   useEffect(() => {
     Promise.all([
@@ -37,7 +40,9 @@ export default function Character() {
       const sheetLayout = layoutForType(parseObjData(campaign.obj_data), item.item_type) ?? FATE_CORE_LAYOUT;
       setTitle(item.title);
       setLayout(sheetLayout);
-      setData(parseObjData(item.obj_data)?.[sheetLayout.root] ?? {});
+      const sheetData = parseObjData(item.obj_data)?.[sheetLayout.root] ?? {};
+      base.current = sheetData;
+      setData(sheetData);
     });
   }, [campaignShortname, characterShortname]);
 
@@ -49,20 +54,21 @@ export default function Character() {
     </div>
   </>;
 
-  // The data endpoint merges into obj_data, so this leaves the item's other
-  // Archivium content (body, tabs, etc.) untouched.
+  // Only the parts of the sheet the user changed are saved, over the latest copy,
+  // so changes made elsewhere meanwhile (e.g. from a scene) are kept.
   const save = (next: unknown) => {
+    if (!campaignShortname || !characterShortname) return;
     setSaveStatus('saving');
     debounce('character-save', async () => {
-      const response = await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${characterShortname}/data`, {
-        credentials: 'include',
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ [layout.root]: next }),
-      });
-      setSaveStatus(response.ok ? 'saved' : 'error');
+      try {
+        const saved = await saveSheetChanges(campaignShortname, characterShortname, layout.root, base.current, next);
+        base.current = saved;
+        // Show what was saved elsewhere too, unless the user has kept typing.
+        setData((current: unknown) => current === next ? saved : current);
+        setSaveStatus('saved');
+      } catch {
+        setSaveStatus('error');
+      }
     }, 800);
   };
 
