@@ -9,8 +9,9 @@ import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
+import { stressTracks, takenConsequences, trackKey, withBoxToggled } from '../fate/stress';
 import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
-import { useSyncedDoc } from '../sync';
+import { isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
 import CombatTracker, { type CombatEntry } from './CombatTracker';
@@ -135,7 +136,7 @@ const SCENE_ROOT = FATE_SCENE_LAYOUT.root;
 
 export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true, userName = '' }: Props) {
   const doc = useSyncedDoc(`scene/${campaignShortname}/${sceneShortname}`);
-  const live = doc?.status === 'synced';
+  const live = isLive(doc?.status);
   const canEdit = live && !doc.readOnly;
 
   const [liveShapes, setLiveShapes] = useState<Shape[]>([]);
@@ -357,8 +358,28 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       label: same.length > 1 ? `${token.itemTitle} ${same.indexOf(token) + 1}` : token.itemTitle,
       color: token.color,
       portraitUrl: portraitUrl(token.itemShortname),
+      stress: stressTracks(sheets[token.itemShortname]),
+      consequences: takenConsequences(sheets[token.itemShortname]),
     };
   });
+
+  // Ticking a stress box on a card saves it to the freshest copy of the sheet. Tokens of
+  // the same character share its sheet, and so its stress.
+  const toggleStress = async (tokenId: string, path: string, index: number) => {
+    const token = tokens.find(t => t.id === tokenId);
+    if (!canEdit || !token) return;
+    const shortname = token.itemShortname;
+    const key = trackKey(path);
+    setSheetKey(shortname, key, withBoxToggled(sheets[shortname], path, index));
+    try {
+      const saved = await updateSheetKey(campaignShortname, shortname, SHEET_ROOT, key, fresh => withBoxToggled({ [key]: fresh }, path, index));
+      setSheetKey(shortname, key, saved);
+      ySheetStamps?.set(shortname, Date.now());
+    } catch {
+      window.alert(`Couldn't save ${token.itemTitle}'s stress.`);
+      loadSheets([shortname]);
+    }
+  };
 
   const setCombat = (next: CombatState | null) => {
     if (!canEdit || !yCombat) return;
@@ -775,6 +796,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         state={combat}
         entries={combatEntries}
         canRun={canEdit && gm}
+        canMarkStress={canEdit}
+        onToggleStress={toggleStress}
         onStart={startCombat}
         onStep={direction => combat && setCombat(stepTurn(combat, presentTokens(), direction))}
         onEnd={() => setCombat(null)}
@@ -784,6 +807,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       />
       {doc?.status === 'connecting' && <p className='ma-0 mb-1'><small>Connecting to the live scene…</small></p>}
       {doc?.status === 'offline' && <p className='ma-0 mb-1'><small>Live sync is unavailable, so this is the last saved version and can't be edited.</small></p>}
+      {doc?.status === 'reconnecting' && <p className='ma-0 mb-1'><small>Reconnecting to the live scene… changes made meanwhile will sync when it's back.</small></p>}
       {canEdit && <div>
         <button onClick={addRect}>Add Rectangle</button>
         <select value={tokenPick} onChange={({ target }) => setTokenPick(target.value)}>

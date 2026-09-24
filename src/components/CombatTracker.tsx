@@ -1,4 +1,5 @@
 import { CONFLICT_LABELS, type CombatState, type ConflictKind } from '../fate/combat';
+import type { Consequence, StressTrack } from '../fate/stress';
 
 // A token on the map, as shown in the turn order.
 export type CombatEntry = {
@@ -6,6 +7,8 @@ export type CombatEntry = {
   label: string;
   color: string;
   portraitUrl: string | null;
+  stress: StressTrack[];
+  consequences: Consequence[];
 };
 
 interface Props {
@@ -13,6 +16,9 @@ interface Props {
   entries: CombatEntry[];
   // Only the GM runs the turn order; everyone sees it.
   canRun: boolean;
+  // Whether the viewer may tick stress boxes (anyone who can edit the scene).
+  canMarkStress: boolean;
+  onToggleStress: (tokenId: string, path: string, index: number) => void;
   onStart: (kind: ConflictKind) => void;
   onStep: (direction: 1 | -1) => void;
   onEnd: () => void;
@@ -37,7 +43,31 @@ function Face({ entry, size }: { entry: CombatEntry, size: string }) {
   );
 }
 
-export default function CombatTracker({ state, entries, canRun, onStart, onStep, onEnd, onMove, onRemove, onAdd }: Props) {
+function StressRow({ track, canMark, onToggle }: { track: StressTrack, canMark: boolean, onToggle: (index: number) => void }) {
+  return (
+    <span className='d-flex align-center gap-0' title={`${track.label} stress`}>
+      <small style={{ width: '0.9rem', opacity: 0.8 }}>{track.label.slice(0, 1)}</small>
+      {track.boxes.map((box, i) => (
+        <button
+          key={i}
+          type='button'
+          aria-label={`${track.label} stress box ${i + 1}${box.checked ? ', marked' : ''}`}
+          aria-pressed={box.checked}
+          disabled={!canMark || !box.enabled}
+          onClick={() => onToggle(i)}
+          style={{
+            width: '0.95rem', height: '0.95rem', padding: 0, margin: '0 1px', borderRadius: 2, minWidth: 0,
+            opacity: box.enabled ? 1 : 0.25, lineHeight: 1, fontSize: '0.7rem',
+            background: box.checked ? 'var(--light-text-color, #ddd)' : undefined,
+            color: box.checked ? 'var(--sheet-color, #333)' : undefined,
+          }}
+        >{box.checked ? '✕' : ''}</button>
+      ))}
+    </span>
+  );
+}
+
+export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onStart, onStep, onEnd, onMove, onRemove, onAdd }: Props) {
   if (!state) {
     if (!canRun || entries.length === 0) return null;
     return (
@@ -82,7 +112,7 @@ export default function CombatTracker({ state, entries, canRun, onStart, onStep,
               aria-current={isCurrent ? 'step' : undefined}
               className='d-flex flex-col align-center gap-0'
               style={{
-                flex: '0 0 auto', width: '5.5rem', padding: '0.35rem 0.25rem', borderRadius: 6,
+                flex: '0 0 auto', width: '7.5rem', padding: '0.35rem 0.25rem', borderRadius: 6,
                 border: `2px solid ${isCurrent ? CURRENT_COLOR : 'transparent'}`,
                 background: isCurrent ? 'rgb(245 197 66 / 12%)' : undefined,
               }}
@@ -90,6 +120,20 @@ export default function CombatTracker({ state, entries, canRun, onStart, onStep,
               <small style={{ opacity: 0.7 }}>{i + 1}</small>
               <Face entry={entry} size='2.75rem' />
               <small style={{ textAlign: 'center', overflowWrap: 'anywhere', lineHeight: 1.2, marginTop: 2 }}>{entry.label}</small>
+              <div className='d-flex flex-col gap-0 mt-1'>
+                {entry.stress.map(track => (
+                  <StressRow key={track.path} track={track} canMark={canMarkStress} onToggle={index => onToggleStress(id, track.path, index)} />
+                ))}
+              </div>
+              {entry.consequences.length > 0 && (
+                <ul className='ma-0 pa-0 mt-1 w-100' style={{ listStyle: 'none' }}>
+                  {entry.consequences.map(c => (
+                    <li key={c.label} title={`${c.label} (${c.badge}): ${c.text}`} style={{ fontSize: '0.75rem', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <b>{c.badge}</b> <i>{c.text}</i>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {canRun && (
                 <span className='d-flex gap-0 mt-1'>
                   <button title='Earlier' aria-label={`Move ${entry.label} earlier`} disabled={i === 0} onClick={() => onMove(id, -1)} style={{ padding: '0 0.35rem' }}>‹</button>
