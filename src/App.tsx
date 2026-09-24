@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router';
 import Navbar from './components/Navbar';
 import Campaign from './pages/Campaign';
+import Character from './pages/Character';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
 import NewItem from './pages/NewItem';
@@ -43,6 +44,7 @@ export default function App() {
         <Route path='campaigns'>
           <Route path=':campaignShortname' element={<Campaign user={user} />} />
           <Route path=':campaignShortname/items/new' element={<NewItem />} />
+          <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />
           <Route path=':campaignShortname/maps'>
             <Route path='new' element={<NewItem fixedType='location' />} />
             <Route path=':mapShortname' element={<Map user={user} />} />
