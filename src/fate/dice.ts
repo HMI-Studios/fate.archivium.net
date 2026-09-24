@@ -3,13 +3,20 @@ import { FATE_CORE_LAYOUT } from './coreLayout';
 
 // Fate dice rolls, shared in a scene's live doc (the `rolls` map) so everyone at the
 // table sees them. A roll is 4dF plus a skill rating and a modifier; invoking an
-// aspect afterwards adds +2, paid with a free invoke or a fate point.
+// aspect afterwards either adds +2 or rerolls the dice, paid with a free invoke or a
+// fate point.
 
 export type FateDie = -1 | 0 | 1;
+
+export type InvokeEffect = 'bonus' | 'reroll';
 
 export type RollInvoke = {
   aspect: string;
   paidWith: 'free invoke' | 'fate point';
+  // Invokes from before rerolls existed have no effect: they were all +2.
+  effect?: InvokeEffect;
+  // For a reroll, the dice it replaced.
+  previousDice?: FateDie[];
 };
 
 export type Roll = {
@@ -36,7 +43,9 @@ export function rollFateDice(): FateDie[] {
 
 export const diceTotal = (dice: FateDie[]) => dice.reduce<number>((sum, die) => sum + die, 0);
 
-export const rollTotal = (roll: Roll) => diceTotal(roll.dice) + roll.skillRating + roll.modifier + 2 * roll.invokes.length;
+export const isBonus = (invoke: RollInvoke) => (invoke.effect ?? 'bonus') === 'bonus';
+
+export const rollTotal = (roll: Roll) => diceTotal(roll.dice) + roll.skillRating + roll.modifier + 2 * roll.invokes.filter(isBonus).length;
 
 const LADDER: { [value: number]: string } = {
   8: 'Legendary', 7: 'Epic', 6: 'Fantastic', 5: 'Superb', 4: 'Great', 3: 'Good',

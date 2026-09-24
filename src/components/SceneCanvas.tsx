@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
 import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
-import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type Roll, type RollInvoke } from '../fate/dice';
+import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
 import { useSyncedDoc } from '../sync';
@@ -387,9 +387,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     });
   };
 
-  // +2 on a roll: spends one of the aspect's free invokes, or else a fate point
-  // from the rolling character's sheet (a roll with no character is the GM's).
-  const invokeOnRoll = async (rollId: string, aspectId: string) => {
+  // Invoking on a roll (+2 or a reroll) spends one of the aspect's free invokes, or
+  // else a fate point from the rolling character's sheet (a roll with no character
+  // is the GM's).
+  const invokeOnRoll = async (rollId: string, aspectId: string, effect: InvokeEffect) => {
     const roll = yRolls?.get(rollId);
     const aspect = invokableAspects.find(a => a.id === aspectId);
     if (!canEdit || !yRolls || !roll || !aspect) return;
@@ -416,7 +417,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       }
     }
     const latest = yRolls.get(rollId) ?? roll;
-    yRolls.set(rollId, { ...latest, invokes: [...latest.invokes, { aspect: aspect.name, paidWith }] });
+    const invoke: RollInvoke = effect === 'reroll'
+      ? { aspect: aspect.name, paidWith, effect, previousDice: latest.dice }
+      : { aspect: aspect.name, paidWith, effect };
+    yRolls.set(rollId, {
+      ...latest,
+      ...(effect === 'reroll' ? { dice: rollFateDice() } : {}),
+      invokes: [...latest.invokes, invoke],
+    });
   };
 
   const writableAspects = (): Y.Map<SceneAspect> | null => (canEdit && yAspects) ? yAspects : null;
@@ -796,17 +804,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
             </Layer>
           </Stage>
         </div>
-        <div className='d-flex flex-col gap-4' style={{ flex: '0 1 280px', minWidth: 220 }}>
-          <DiceRoller
-            rolls={liveRolls.slice(0, 10)}
-            characters={characters}
-            skills={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, skillRatings(sheet)]))}
-            fatePoints={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, fatePoints(sheet)]))}
-            aspects={invokableAspects}
-            canRoll={canEdit}
-            onRoll={addRoll}
-            onInvoke={invokeOnRoll}
-          />
+        <div style={{ flex: '0 1 280px', minWidth: 220 }}>
           <AspectsPanel
             campaignShortname={campaignShortname}
             aspects={aspects}
@@ -822,6 +820,16 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
           />
         </div>
       </div>
+      <DiceRoller
+        rolls={liveRolls.slice(0, 10)}
+        characters={characters}
+        skills={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, skillRatings(sheet)]))}
+        fatePoints={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, fatePoints(sheet)]))}
+        aspects={invokableAspects}
+        canRoll={canEdit}
+        onRoll={addRoll}
+        onInvoke={invokeOnRoll}
+      />
     </div>
   );
 }
