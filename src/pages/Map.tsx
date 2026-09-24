@@ -65,6 +65,33 @@ export function initY(roomName: string) {
 
 const TOKEN_CATEGORIES = ['pc', 'npc', 'monster'];
 
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 10;
+
+type Camera = { x: number; y: number; scale: number };
+
+function fitCamera(viewWidth: number, viewHeight: number, mapWidth: number, mapHeight: number): Camera {
+  const scale = Math.min(viewWidth / mapWidth, viewHeight / mapHeight) * 0.95;
+  return {
+    scale,
+    x: (viewWidth - mapWidth * scale) / 2,
+    y: (viewHeight - mapHeight * scale) / 2,
+  };
+}
+
+// Stretch a shape from one map size to another, so it stays over the same spot
+// of the map when the map's dimensions change (e.g. a new background image).
+function scaleShape(shape: Shape, sx: number, sy: number): Shape {
+  switch (shape.type) {
+    case 'rect':
+      return { ...shape, x: shape.x * sx, y: shape.y * sy, width: shape.width * sx, height: shape.height * sy };
+    case 'token':
+      return { ...shape, x: shape.x * sx, y: shape.y * sy };
+    case 'line':
+      return { ...shape, points: shape.points.map((p, i) => p * (i % 2 === 0 ? sx : sy)) };
+  }
+}
+
 interface Props {
   user: any;
 }
@@ -87,6 +114,12 @@ export default function Map({ user }: Props) {
   const [tokenCandidates, setTokenCandidates] = useState<MapItem[]>([]);
   const [tokenPick, setTokenPick] = useState('');
 
+  const [tool, setTool] = useState<'pan' | 'draw'>('pan');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
+  const fittedFor = useRef<string | null>(null);
+
   const myLineId = useRef<string | null>(null);
   const mapTitleRef = useRef(mapShortname);
 
@@ -104,6 +137,25 @@ export default function Map({ user }: Props) {
       setTokenCandidates(items.filter((item: MapItem) => TOKEN_CATEGORIES.includes(item.item_type)));
     });
   }, [campaignShortname]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setViewport({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Fit the whole map into view whenever its dimensions change.
+  useEffect(() => {
+    if (!viewport.width || !viewport.height) return;
+    const key = `${mapWidth}x${mapHeight}`;
+    if (fittedFor.current === key) return;
+    fittedFor.current = key;
+    setCamera(fitCamera(viewport.width, viewport.height, mapWidth, mapHeight));
+  }, [viewport, mapWidth, mapHeight]);
 
   useEffect(() => {
     if (imgVersion === 0 || !campaignShortname || !mapShortname) return;
@@ -194,15 +246,22 @@ export default function Map({ user }: Props) {
     setSelectedId(null);
   };
 
+  // Center of the visible area, in map coordinates.
+  const viewCenter = () => ({
+    x: (viewport.width / 2 - camera.x) / camera.scale,
+    y: (viewport.height / 2 - camera.y) / camera.scale,
+  });
+
   const addRect = () => {
     if (!yRef.current) return;
 
+    const center = viewCenter();
     const rect: RectShape = {
       id: `rect-${Date.now()}`,
       clientID: yRef.current.ydoc.clientID,
       type: 'rect',
-      x: 50 + Math.random() * 200,
-      y: 50 + Math.random() * 200,
+      x: center.x - 50,
+      y: center.y - 40,
       width: 100,
       height: 80,
       fill: 'skyblue'
@@ -215,12 +274,13 @@ export default function Map({ user }: Props) {
     const item = tokenCandidates.find(i => i.shortname === tokenPick);
     if (!item) return;
 
+    const center = viewCenter();
     const token: TokenShape = {
       id: `token-${Date.now()}`,
       clientID: yRef.current.ydoc.clientID,
       type: 'token',
-      x: mapWidth / 2,
-      y: mapHeight / 2,
+      x: center.x,
+      y: center.y,
       itemShortname: item.shortname,
       itemTitle: item.title,
       color: item.item_type === 'pc' ? '#deddca' : item.item_type === 'monster' ? '#ba40f2' : '#e82c17',
@@ -243,10 +303,11 @@ export default function Map({ user }: Props) {
   };
 
   const startDraw = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    if (!yRef.current) return;
+    if (!yRef.current || tool !== 'draw') return;
     if (e.target !== e.target.getStage()) return;
+    const pos = e.target.getStage()!.getRelativePointerPosition();
+    if (!pos) return;
     setDrawing(true);
-    const pos = e.target.getStage()!.getPointerPosition()!;
     const newLine: LineShape = {
       id: `line-${Date.now()}`,
       clientID: yRef.current.ydoc.clientID,
@@ -263,9 +324,9 @@ export default function Map({ user }: Props) {
 
   const draw = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     if (!drawing || !yRef.current) return;
-    const point = e.target.getStage()!.getPointerPosition()!;
+    const point = e.target.getStage()!.getRelativePointerPosition();
     const id = myLineId.current;
-    if (id == null) return;
+    if (id == null || !point) return;
 
     const yShapes = yRef.current.yShapes;
     const current = yShapes.get(id) as LineShape | undefined;
@@ -293,10 +354,56 @@ export default function Map({ user }: Props) {
       method: 'POST',
       body: formData,
     });
-    setUploading(false);
-    if (response.ok) {
-      setImgVersion(v => v + 1);
+    if (!response.ok) {
+      setUploading(false);
+      return;
     }
+
+    // Archivium resizes the map to the uploaded image's pixel dimensions, so
+    // rescale existing shapes to keep them over the same part of the map.
+    const itemResponse = await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${mapShortname}`, { credentials: 'include' });
+    if (itemResponse.ok) {
+      const data = await itemResponse.json();
+      const newWidth = data.map?.width ?? mapWidth;
+      const newHeight = data.map?.height ?? mapHeight;
+      if ((newWidth !== mapWidth || newHeight !== mapHeight) && yRef.current) {
+        const { ydoc, yShapes } = yRef.current;
+        const sx = newWidth / mapWidth;
+        const sy = newHeight / mapHeight;
+        ydoc.transact(() => {
+          Array.from(yShapes.values()).forEach(shape => yShapes.set(shape.id, scaleShape(shape, sx, sy)));
+        });
+      }
+      setMapWidth(newWidth);
+      setMapHeight(newHeight);
+    }
+    setUploading(false);
+    setImgVersion(v => v + 1);
+  };
+
+  const zoomAt = (point: { x: number, y: number }, factor: number) => {
+    setCamera(cam => {
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, cam.scale * factor));
+      const worldX = (point.x - cam.x) / cam.scale;
+      const worldY = (point.y - cam.y) / cam.scale;
+      return { scale, x: point.x - worldX * scale, y: point.y - worldY * scale };
+    });
+  };
+
+  const zoomAtCenter = (factor: number) => zoomAt({ x: viewport.width / 2, y: viewport.height / 2 }, factor);
+
+  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+    const pointer = e.target.getStage()!.getPointerPosition();
+    if (!pointer) return;
+    zoomAt(pointer, Math.exp(-e.evt.deltaY * 0.0015));
+  };
+
+  // Shape drags bubble up to the stage, so only treat drags of the stage itself as panning.
+  const handleStageDrag = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const stage = e.target.getStage();
+    if (e.target !== stage) return;
+    setCamera(cam => ({ ...cam, x: stage.x(), y: stage.y() }));
   };
 
   const clearSelection = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -328,67 +435,99 @@ export default function Map({ user }: Props) {
           }}
         />
       </label>
-      <Stage
-        ref={stageRef}
-        width={mapWidth}
-        height={mapHeight}
-        style={{ border: '1px solid #aaa', marginTop: 10 }}
-        onMouseDown={(e) => { clearSelection(e); startDraw(e); }}
-        onMousemove={draw}
-        onMouseup={endDraw}
-        onTouchStart={(e) => { clearSelection(e); startDraw(e); }}
-        onTouchMove={draw}
-        onTouchEnd={endDraw}
+      <div style={{ marginTop: 10 }}>
+        <button onClick={() => setTool('pan')} disabled={tool === 'pan'}>Pan</button>
+        <button onClick={() => setTool('draw')} disabled={tool === 'draw'}>Draw</button>
+        <span style={{ marginLeft: 10 }}>
+          <button onClick={() => zoomAtCenter(1 / 1.25)}>−</button>
+          <span style={{ display: 'inline-block', minWidth: 50, textAlign: 'center' }}>{Math.round(camera.scale * 100)}%</span>
+          <button onClick={() => zoomAtCenter(1.25)}>+</button>
+          <button onClick={() => setCamera(fitCamera(viewport.width, viewport.height, mapWidth, mapHeight))}>Fit</button>
+        </span>
+      </div>
+      <div
+        ref={containerRef}
+        style={{
+          border: '1px solid #aaa',
+          marginTop: 10,
+          width: '100%',
+          height: '70vh',
+          minHeight: 400,
+          overflow: 'hidden',
+          touchAction: 'none',
+          cursor: tool === 'pan' ? 'grab' : 'crosshair',
+        }}
       >
-        <Layer>
-          {bgImage && <KonvaImage image={bgImage} x={0} y={0} width={mapWidth} height={mapHeight} listening={false} />}
-          {shapes.map(s => {
-            const selected = s.id === selectedId;
-            if (s.type === 'rect') {
+        <Stage
+          ref={stageRef}
+          width={viewport.width}
+          height={viewport.height}
+          x={camera.x}
+          y={camera.y}
+          scaleX={camera.scale}
+          scaleY={camera.scale}
+          draggable={tool === 'pan'}
+          onDragMove={handleStageDrag}
+          onDragEnd={handleStageDrag}
+          onWheel={handleWheel}
+          onMouseDown={(e) => { clearSelection(e); startDraw(e); }}
+          onMousemove={draw}
+          onMouseup={endDraw}
+          onTouchStart={(e) => { clearSelection(e); startDraw(e); }}
+          onTouchMove={draw}
+          onTouchEnd={endDraw}
+        >
+          <Layer>
+            <Rect x={0} y={0} width={mapWidth} height={mapHeight} fill='rgba(255, 255, 255, 0.05)' stroke='#888' strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+            {bgImage && <KonvaImage image={bgImage} x={0} y={0} width={mapWidth} height={mapHeight} listening={false} />}
+            {shapes.map(s => {
+              const selected = s.id === selectedId;
+              if (s.type === 'rect') {
+                return (
+                  <Rect
+                    key={s.id}
+                    {...s}
+                    draggable
+                    stroke={selected ? 'red' : undefined}
+                    strokeWidth={selected ? 3 : 0}
+                    onClick={() => setSelectedId(s.id)}
+                    onTap={() => setSelectedId(s.id)}
+                    onDragMove={e => handleDragMove(s.id, e)}
+                    onDragEnd={e => handleDragMove(s.id, e)}
+                  />
+                );
+              }
+              if (s.type === 'token') {
+                return (
+                  <Group
+                    key={s.id}
+                    x={s.x}
+                    y={s.y}
+                    draggable
+                    onClick={() => setSelectedId(s.id)}
+                    onTap={() => setSelectedId(s.id)}
+                    onDragMove={e => handleDragMove(s.id, e)}
+                    onDragEnd={e => handleDragMove(s.id, e)}
+                  >
+                    <Circle radius={20} fill={s.color} stroke={selected ? 'red' : 'black'} strokeWidth={selected ? 3 : 1} />
+                    <Text text={s.itemTitle} y={24} offsetX={20} width={40} align='center' fontSize={12} />
+                  </Group>
+                );
+              }
               return (
-                <Rect
+                <Line
                   key={s.id}
                   {...s}
-                  draggable
-                  stroke={selected ? 'red' : undefined}
-                  strokeWidth={selected ? 3 : 0}
+                  hitStrokeWidth={12}
+                  stroke={selected ? 'red' : s.stroke}
                   onClick={() => setSelectedId(s.id)}
                   onTap={() => setSelectedId(s.id)}
-                  onDragMove={e => handleDragMove(s.id, e)}
-                  onDragEnd={e => handleDragMove(s.id, e)}
                 />
               );
-            }
-            if (s.type === 'token') {
-              return (
-                <Group
-                  key={s.id}
-                  x={s.x}
-                  y={s.y}
-                  draggable
-                  onClick={() => setSelectedId(s.id)}
-                  onTap={() => setSelectedId(s.id)}
-                  onDragMove={e => handleDragMove(s.id, e)}
-                  onDragEnd={e => handleDragMove(s.id, e)}
-                >
-                  <Circle radius={20} fill={s.color} stroke={selected ? 'red' : 'black'} strokeWidth={selected ? 3 : 1} />
-                  <Text text={s.itemTitle} y={24} offsetX={20} width={40} align='center' fontSize={12} />
-                </Group>
-              );
-            }
-            return (
-              <Line
-                key={s.id}
-                {...s}
-                hitStrokeWidth={12}
-                stroke={selected ? 'red' : s.stroke}
-                onClick={() => setSelectedId(s.id)}
-                onTap={() => setSelectedId(s.id)}
-              />
-            );
-          })}
-        </Layer>
-      </Stage>
+            })}
+          </Layer>
+        </Stage>
+      </div>
     </div>
   );
 }
