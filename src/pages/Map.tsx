@@ -477,7 +477,8 @@ export default function Map({ user }: Props) {
           <Layer>
             <Rect x={0} y={0} width={mapWidth} height={mapHeight} fill='rgba(255, 255, 255, 0.05)' stroke='#888' strokeWidth={1} strokeScaleEnabled={false} listening={false} />
             {bgImage && <KonvaImage image={bgImage} x={0} y={0} width={mapWidth} height={mapHeight} listening={false} />}
-            {shapes.map(s => {
+            {/* Draw tokens last so drawings can never cover them. */}
+            {[...shapes].sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
               const selected = s.id === selectedId;
               if (s.type === 'rect') {
                 return (
