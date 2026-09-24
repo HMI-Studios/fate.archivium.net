@@ -93,6 +93,10 @@ function scaleShape(shape: Shape, sx: number, sy: number): Shape {
 
 const TOKEN_RADIUS = 20;
 
+// Archivium can't delete a map's image, so removing the background only hides it:
+// the scene item remembers this flag until a new image is uploaded.
+const MAP_IMAGE_HIDDEN_KEY = 'mapImageHidden';
+
 // A token's circle: the character's portrait clipped to it, ringed in the token's
 // color, or just the color while there's no portrait (or it hasn't loaded yet).
 function TokenFace({ color, portraitUrl, selected }: { color: string, portraitUrl: string | null, selected: boolean }) {
@@ -180,14 +184,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${sceneShortname}`, { credentials: 'include' }).then(async (response) => {
       if (!response.ok) return;
       const data = await response.json();
+      const objData = typeof data.obj_data === 'string' ? JSON.parse(data.obj_data) : data.obj_data;
       if (data.map) {
         setMeta(m => ({
           width: data.map.width ?? m.width,
           height: data.map.height ?? m.height,
-          imageStamp: data.map.image_id ?? null,
+          imageStamp: objData?.[MAP_IMAGE_HIDDEN_KEY] ? null : data.map.image_id ?? null,
         }));
       }
-      const objData = typeof data.obj_data === 'string' ? JSON.parse(data.obj_data) : data.obj_data;
       // Scenes saved before scene sheets kept their aspects in obj_data.sceneAspects.
       const sceneSheetAspects = objData?.[SCENE_ROOT]?.[SCENE_ASPECTS_KEY];
       setSavedAspects(sceneSheetAspects !== undefined ? fromSceneSheet(sceneSheetAspects) : (objData?.sceneAspects ?? []));
@@ -665,7 +669,24 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       yMeta.set('height', newHeight);
       yMeta.set('imageStamp', Date.now());
     });
+    await setMapImageHidden(false);
     setUploading(false);
+  };
+
+  const setMapImageHidden = (hidden: boolean) => fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${sceneShortname}/data`, {
+    credentials: 'include',
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ [MAP_IMAGE_HIDDEN_KEY]: hidden }),
+  });
+
+  const removeBackground = async () => {
+    if (!canEdit || !yMeta) return;
+    if (!window.confirm('Remove the background image? Shapes and tokens stay where they are.')) return;
+    yMeta.set('imageStamp', null);
+    await setMapImageHidden(true);
   };
 
   const zoomAt = (point: { x: number, y: number }, factor: number) => {
@@ -724,9 +745,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) uploadImage(file);
+              e.target.value = '';
             }}
           />
         </label>}
+        {gm && meta.imageStamp !== null && <button onClick={removeBackground} disabled={uploading}>Remove background</button>}
       </div>}
       <div style={{ marginTop: 10 }}>
         {canEdit && <>
