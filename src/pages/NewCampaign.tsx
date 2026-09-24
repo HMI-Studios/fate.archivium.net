@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ARCHIVIUM_URL } from '../App';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import Breadcrumbs from '../components/Breadcrumbs';
 import { FATE_UNIVERSE_DATA } from '../fate/universeData';
 
 type NewCampaign = {
@@ -100,6 +101,7 @@ export default function NewCampaign() {
   }
   
   return <>
+    <Breadcrumbs current='New campaign' />
     <h1>New Campaign</h1>
     <form onSubmit={postCampaign}>
       <div className='inputGroup'>
@@ -108,8 +110,9 @@ export default function NewCampaign() {
       <div className='inputGroup'>
         <input value={newCampaign.shortname} onChange={({ target }) => setNewCampaign({ ...newCampaign, shortname: target.value })} placeholder='Shortname' />
       </div>
-      <div>
+      <div className='d-flex align-center gap-3'>
         <input type='submit' />
+        <Link className='link link-animated' to='/'>Cancel</Link>
       </div>
       {error && <div>
         <span className='color-error'>{error}</span>

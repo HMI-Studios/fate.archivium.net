@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ARCHIVIUM_URL } from '../App';
 import { Link, useParams } from 'react-router';
+import Breadcrumbs, { archiviumUniverseUrl } from '../components/Breadcrumbs';
 
 export type Campaign = {
   author_id: number,
@@ -55,8 +56,12 @@ export default function Campaign(props) {
   </>;
   
   return <>
+    <Breadcrumbs campaign={campaign.shortname} />
     <h1>{campaign.title}</h1>
-    <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/play`}>Enter the game room</Link>
+    <div className='d-flex gap-3 flex-wrap'>
+      <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/play`}>Enter the game room</Link>
+      <a className='link link-animated' href={archiviumUniverseUrl(campaign.shortname)}>Open in Archivium</a>
+    </div>
 
     <h2>Characters</h2>
     <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/items/new?type=pc`}>New Character</Link>

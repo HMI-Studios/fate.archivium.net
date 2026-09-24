@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ARCHIVIUM_URL } from '../App';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import Breadcrumbs from '../components/Breadcrumbs';
 import type { Campaign } from './Campaign';
 
 type NewItem = {
@@ -90,6 +91,7 @@ export default function NewItem({ fixedType }: Props) {
   }
 
   return <>
+    <Breadcrumbs campaign={campaignShortname} current={fixedType === 'location' ? 'New map' : 'New item'} />
     <h1>New {fixedType === 'location' ? 'Map' : 'Item'}</h1>
     <form onSubmit={postItem}>
       <div className='inputGroup'>
@@ -106,8 +108,9 @@ export default function NewItem({ fixedType }: Props) {
           ))}
         </select>
       </div>}
-      <div>
+      <div className='d-flex align-center gap-3'>
         <input type='submit' />
+        <Link className='link link-animated' to={`/campaigns/${campaignShortname}`}>Cancel</Link>
       </div>
       {error && <div>
         <span className='color-error'>{error}</span>

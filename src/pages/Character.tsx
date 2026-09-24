@@ -4,6 +4,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { portraitId, PORTRAIT_KEY, type GalleryImage } from '../fate/portrait';
 import { saveSheetChanges } from '../fate/sheetData';
+import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PortraitSlot from '../components/PortraitSlot';
 import { type SheetLayout } from '../layout/core';
 import { layoutForType } from '../layout/typeConfig';
@@ -81,7 +82,11 @@ export default function Character() {
   return <div className='d-flex flex-col gap-3'>
     <style>{SHEET_LAYOUT_CSS}</style>
     <div className='d-flex justify-between align-center flex-wrap gap-2'>
-      <Link className='link link-animated' to={`/campaigns/${campaignShortname}`}>← Back to campaign</Link>
+      <Breadcrumbs campaign={campaignShortname} current={title} />
+      <div className='d-flex align-center gap-3 flex-wrap'>
+        <Link className='link link-animated' to={`/campaigns/${campaignShortname}/play`}>Game room</Link>
+        {campaignShortname && characterShortname && <a className='link link-animated' href={archiviumItemUrl(campaignShortname, characterShortname)}>Open in Archivium</a>}
+      </div>
       <span className={saveStatus === 'error' ? 'color-error' : undefined} style={{ color: saveStatus === 'error' ? undefined : 'var(--light-text-color)' }}>
         {saveStatus === 'saving' && 'Saving...'}
         {saveStatus === 'saved' && 'Saved'}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
+import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import SceneCanvas from '../components/SceneCanvas';
 import { useSyncedDoc } from '../sync';
 import type { Campaign } from './Campaign';
@@ -98,8 +99,11 @@ export default function Room({ user }: Props) {
   // but they can still read other scenes through the API. When Archivium can hide
   // items, unrevealed scenes should be hidden there too; `scene/` docs already
   // defer to item permissions, so this view needs no change for that.
+  const breadcrumbs = <Breadcrumbs campaign={campaignShortname} current='Game room' />;
+
   if (!isGM) {
     return <>
+      {breadcrumbs}
       <h1 className='mb-1'>{campaign.title}</h1>
       {offlineNotice}
       {activeScene
@@ -114,6 +118,7 @@ export default function Room({ user }: Props) {
   const shownScene = editingScene ?? activeScene;
 
   return <>
+    {breadcrumbs}
     <h1 className='mb-1'>{campaign.title}</h1>
     {offlineNotice}
     <div className='d-flex gap-3'>
@@ -154,6 +159,9 @@ export default function Room({ user }: Props) {
               {sceneTitle(shownScene)}
               {shownScene !== activeScene && <small> (players can't see this)</small>}
             </h2>
+            <p className='ma-0 mb-1'>
+              <small><a className='link link-animated' href={archiviumItemUrl(campaignShortname, shownScene)}>Prepare this scene in Archivium</a></small>
+            </p>
             <SceneCanvas key={shownScene} campaignShortname={campaignShortname} sceneShortname={shownScene} userName={user.username} />
           </>
           : <p>Pick a scene to edit, then show it to the players when it's ready.</p>}
