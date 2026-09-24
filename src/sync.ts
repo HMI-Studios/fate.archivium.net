@@ -16,9 +16,14 @@ async function fetchSessionToken(): Promise<string> {
   return await response.json();
 }
 
-// 'offline' means the server refused the document or never answered; callers should
-// fall back to the last saved state.
-export type SyncStatus = 'connecting' | 'synced' | 'offline';
+// 'offline' means the server refused the document or never answered, so callers
+// should fall back to the last saved state. 'reconnecting' means the connection
+// dropped after the doc had synced: the local doc still holds everything and edits
+// made meanwhile sync once it's back, so callers should keep using it.
+export type SyncStatus = 'connecting' | 'synced' | 'reconnecting' | 'offline';
+
+// Whether a doc holds the live state (or, while reconnecting, the latest known).
+export const isLive = (status: SyncStatus | undefined) => status === 'synced' || status === 'reconnecting';
 
 export type SyncedDoc = {
   ydoc: Y.Doc;
@@ -51,7 +56,10 @@ export function useSyncedDoc(name: string | null): SyncedDoc | null {
       document: ydoc,
       token: fetchSessionToken,
       onAuthenticated: ({ scope }) => setReadOnly(scope === 'readonly'),
-      onAuthenticationFailed: () => setStatus('offline'),
+      onAuthenticationFailed: () => setStatus(synced ? 'reconnecting' : 'offline'),
+      onStatus: ({ status }) => {
+        if (status === 'disconnected' && synced) setStatus('reconnecting');
+      },
       onSynced: ({ state }) => {
         if (!state) return;
         synced = true;

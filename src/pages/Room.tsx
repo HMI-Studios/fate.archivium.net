@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import SceneCanvas from '../components/SceneCanvas';
-import { useSyncedDoc } from '../sync';
+import { isLive, useSyncedDoc } from '../sync';
 import type { Campaign } from './Campaign';
 
 // Archivium's permission levels (src/api/utils.ts `perms`). Universe admins run the table.
@@ -58,7 +58,7 @@ export default function Room({ user }: Props) {
   }, [room?.ydoc]);
 
   const savedRoom: RoomState | undefined = campaign?.obj_data?.room;
-  const canDrive = room?.status === 'synced' && !room.readOnly;
+  const canDrive = isLive(room?.status) && !room?.readOnly;
 
   // Seed the live room from the last save if nobody has opened it since the server started.
   useEffect(() => {
