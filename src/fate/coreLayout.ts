@@ -109,6 +109,24 @@ export const FATE_CORE_LAYOUT: SheetLayout = {
         },
       ],
     },
+    {
+      sections: [
+        {
+          // Aspects that outlast a scene; the scene panel can move them here.
+          title: 'Temporary Aspects',
+          fields: [{
+            widget: 'entryList',
+            path: 'temporaryAspects',
+            itemLabel: 'Aspect',
+            addLabel: 'Add Temporary Aspect',
+            fields: [
+              { key: 'name', placeholder: 'Aspect' },
+              { key: 'note', placeholder: 'Free invokes, how long it lasts' },
+            ],
+          }],
+        },
+      ],
+    },
   ],
   checks: [
     { unless: { gte: [refresh, { const: 1 }] }, message: 'Too many stunts: refresh can\'t go below 1.' },
