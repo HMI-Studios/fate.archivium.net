@@ -1,5 +1,5 @@
 import { CONFLICT_LABELS, modeOf, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
-import type { Consequence, StressTrack } from '../fate/stress';
+import type { Consequence, ConsequenceSlot, StressTrack } from '../fate/stress';
 
 // A token on the map, as shown in the turn order.
 export type CombatEntry = {
@@ -9,6 +9,9 @@ export type CombatEntry = {
   portraitUrl: string | null;
   stress: StressTrack[];
   consequences: Consequence[];
+  // Monster tokens have no sheet of their own to write consequences on, so their
+  // slots are edited on the card.
+  consequenceSlots?: ConsequenceSlot[];
 };
 
 interface Props {
@@ -19,6 +22,7 @@ interface Props {
   // Whether the viewer may tick stress boxes (anyone who can edit the scene).
   canMarkStress: boolean;
   onToggleStress: (tokenId: string, path: string, index: number) => void;
+  onSetConsequence: (tokenId: string, path: string, text: string) => void;
   onStart: (kind: ConflictKind) => void;
   onStep: (direction: 1 | -1) => void;
   onEnd: () => void;
@@ -74,7 +78,7 @@ function StressRow({ track, canMark, onToggle }: { track: StressTrack, canMark: 
   );
 }
 
-export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onStart, onStep, onEnd, onMove, onRemove, onAdd, canPass, onPass, onNextRound, onUndo, onSetCurrent }: Props) {
+export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onSetConsequence, onStart, onStep, onEnd, onMove, onRemove, onAdd, canPass, onPass, onNextRound, onUndo, onSetCurrent }: Props) {
   if (!state) {
     if (!canRun || entries.length === 0) return null;
     return (
@@ -164,6 +168,27 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
                     </li>
                   ))}
                 </ul>
+              )}
+              {canMarkStress && entry.consequenceSlots && (
+                <details className='w-100 mt-1'>
+                  <summary style={{ fontSize: '0.75rem', cursor: 'pointer' }}>Consequences</summary>
+                  <div className='d-flex flex-col gap-0 mt-1'>
+                    {entry.consequenceSlots.map(slot => (
+                      <label key={slot.path} className='d-flex align-center gap-0' title={slot.label} style={{ fontSize: '0.75rem' }}>
+                        <b style={{ width: '1rem' }}>{slot.badge}</b>
+                        <input
+                          key={slot.text}
+                          defaultValue={slot.text}
+                          aria-label={`${entry.label}'s ${slot.label} consequence`}
+                          placeholder={slot.label}
+                          onBlur={({ target }) => { if (target.value !== slot.text) onSetConsequence(id, slot.path, target.value); }}
+                          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                          style={{ width: '100%', minWidth: 0, fontSize: '0.75rem', padding: '0 0.2rem' }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </details>
               )}
               {canPass && popcorn && !roundOver && waiting.includes(id) && (
                 <button className='mt-1' onClick={() => onPass(id)} title={`${current?.label ?? 'The current combatant'} is done; ${entry.label} goes next`}>Pass to</button>

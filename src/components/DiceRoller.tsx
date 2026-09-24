@@ -15,8 +15,9 @@ export type InvokableAspect = {
 interface Props {
   rolls: Roll[];
   characters: SceneCharacter[];
-  skills: { [shortname: string]: { [skill: string]: number } };
-  fatePoints: { [shortname: string]: number };
+  // By actor key (SceneCharacter.key).
+  skills: { [key: string]: { [skill: string]: number } };
+  fatePoints: { [key: string]: number };
   aspects: InvokableAspect[];
   canRoll: boolean;
   onRoll: (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => void;
@@ -130,13 +131,13 @@ export default function DiceRoller({ rolls, characters, skills, fatePoints, aspe
   if (open && newest > seenUntil.current) seenUntil.current = newest;
   const unseen = open ? 0 : rolls.filter(r => r.at > seenUntil.current).length;
 
-  const chosen = characters.find(c => c.shortname === character);
-  const ratings = chosen ? skills[chosen.shortname] ?? {} : {};
+  const chosen = characters.find(c => c.key === character);
+  const ratings = chosen ? skills[chosen.key] ?? {} : {};
   // Rated skills first, best first; everything else is Mediocre (+0).
   const skillOptions = [...FATE_SKILLS].sort((a, b) => (ratings[b] ?? 0) - (ratings[a] ?? 0));
 
   const roll = () => onRoll({
-    ...(chosen ? { character: { shortname: chosen.shortname, title: chosen.title } } : {}),
+    ...(chosen ? { character: { shortname: chosen.shortname, title: chosen.title, key: chosen.key } } : {}),
     ...(skill ? { skill } : {}),
     skillRating: skill ? ratings[skill] ?? 0 : 0,
     modifier,
@@ -152,8 +153,8 @@ export default function DiceRoller({ rolls, characters, skills, fatePoints, aspe
               <select aria-label='Rolling character' value={character} onChange={({ target }) => { setCharacter(target.value); setSkill(''); }}>
                 <option value=''>No character</option>
                 {characters.map(c => (
-                  <option key={c.shortname} value={c.shortname}>
-                    {c.title}{fatePoints[c.shortname] !== undefined && ` (${fatePoints[c.shortname]} FP)`}
+                  <option key={c.key} value={c.key}>
+                    {c.title}{fatePoints[c.key] !== undefined && ` (${fatePoints[c.key]} FP)`}
                   </option>
                 ))}
               </select>
@@ -178,7 +179,7 @@ export default function DiceRoller({ rolls, characters, skills, fatePoints, aspe
               key={r.id}
               roll={r}
               aspects={aspects}
-              fatePoints={r.character ? fatePoints[r.character.shortname] : undefined}
+              fatePoints={r.character ? fatePoints[r.character.key ?? r.character.shortname] : undefined}
               canInvoke={canRoll}
               onInvoke={(aspectId, effect) => onInvoke(r.id, aspectId, effect)}
             />

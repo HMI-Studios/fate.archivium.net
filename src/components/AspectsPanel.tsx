@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ASPECT_KINDS, aspectKind, sheetAspectId, sheetInvokes, type AspectKind, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { tokenIdOfActor } from '../fate/tokenState';
 
+// Someone in the scene aspects can be attached to. PCs and NPCs are one each, keyed by
+// item shortname; each monster token is its own, keyed by tokenActorKey() and scoped to
+// the scene (no sheet aspects; its temporary aspects stay in the scene).
 export type SceneCharacter = {
+  key: string;
   shortname: string;
   title: string;
+  scoped?: boolean;
 };
 
 const KIND_COLORS: { [kind in AspectKind]: string } = {
@@ -92,7 +98,7 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
         {canEdit && aspect.kind !== 'boost' && (
           <button title='Add a free invoke' onClick={() => onUpdate(aspect.id, { freeInvokes: aspect.freeInvokes + 1 })}>+ invoke</button>
         )}
-        {canEdit && !onSheet && aspect.kind === 'temporary' && aspect.target && (
+        {canEdit && !onSheet && aspect.kind === 'temporary' && aspect.target && !tokenIdOfActor(aspect.target) && (
           <button title="Move it onto the character's sheet so it outlasts the scene" onClick={() => onKeepOnSheet(aspect)}>Keep on sheet</button>
         )}
       </div>
@@ -109,8 +115,9 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
   // Characters on the map, plus any an aspect is still attached to after its token was removed.
   const groups: SceneCharacter[] = [...characters];
   for (const aspect of aspects) {
-    if (aspect.target && !groups.some(c => c.shortname === aspect.target)) {
-      groups.push({ shortname: aspect.target, title: aspect.targetTitle ?? aspect.target });
+    if (aspect.target && !groups.some(c => c.key === aspect.target)) {
+      const scoped = Boolean(tokenIdOfActor(aspect.target));
+      groups.push({ key: aspect.target, shortname: scoped ? '' : aspect.target, title: aspect.targetTitle ?? aspect.target, scoped });
     }
   }
 
@@ -118,16 +125,16 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
   const sceneAspects = aspects.filter(a => !a.target);
 
   // Temporary aspects are kept on a character's sheet, so they need a character.
-  const needsCharacter = kind === 'temporary' && !groups.some(c => c.shortname === target);
+  const needsCharacter = kind === 'temporary' && !groups.some(c => c.key === target);
 
   const add = () => {
     if (!name.trim() || needsCharacter) return;
-    const character = groups.find(c => c.shortname === target);
+    const character = groups.find(c => c.key === target);
     onAdd({
       name: name.trim(),
       kind,
       freeInvokes: kind === 'boost' ? 1 : Math.max(0, invokes),
-      target: character?.shortname ?? null,
+      target: character?.key ?? null,
       ...(character ? { targetTitle: character.title } : {}),
     });
     setName('');
@@ -146,8 +153,8 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
       </div>
 
       {groups.map(character => {
-        const attached = aspects.filter(a => a.target === character.shortname);
-        const kept: SceneAspect[] = (sheetAspects[character.shortname] ?? [])
+        const attached = aspects.filter(a => a.target === character.key);
+        const kept: SceneAspect[] = (character.scoped ? [] : sheetAspects[character.shortname] ?? [])
           .map((entry, i) => ({
             id: sheetAspectId(character.shortname, i),
             name: entry.name ?? '',
@@ -157,9 +164,11 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
           }))
           .filter(a => a.name);
         return (
-          <div key={character.shortname}>
+          <div key={character.key}>
             <h4 className='ma-0 mb-1'>
-              <Link className='link link-animated' to={`/campaigns/${campaignShortname}/characters/${character.shortname}`}>{character.title}</Link>
+              {character.shortname
+                ? <Link className='link link-animated' to={`/campaigns/${campaignShortname}/characters/${character.shortname}`}>{character.title}</Link>
+                : character.title}
             </h4>
             {attached.length === 0 && kept.length === 0 && <small>No aspects in play.</small>}
             <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
@@ -184,7 +193,7 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
             </select>
             <select aria-label='Attached to' value={target} onChange={({ target }) => setTarget(target.value)}>
               <option value=''>The scene</option>
-              {groups.map(c => <option key={c.shortname} value={c.shortname}>{c.title}</option>)}
+              {groups.map(c => <option key={c.key} value={c.key}>{c.title}</option>)}
             </select>
           </div>
           <label className='d-flex align-center gap-1'>

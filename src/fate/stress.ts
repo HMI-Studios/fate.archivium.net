@@ -31,6 +31,13 @@ export const takenConsequences = (sheet: unknown): Consequence[] => slotFields
   .filter(field => isEnabled(field.enabled, sheet) && textAt(sheet, field.path).trim())
   .map(field => ({ label: field.label, badge: field.badge, text: textAt(sheet, field.path) }));
 
+export type ConsequenceSlot = Consequence & { path: string };
+
+// Every consequence slot the sheet's rules make available, filled or not.
+export const consequenceSlots = (sheet: unknown): ConsequenceSlot[] => slotFields
+  .filter(field => isEnabled(field.enabled, sheet))
+  .map(field => ({ path: field.path, label: field.label, badge: field.badge, text: textAt(sheet, field.path) }));
+
 // The sheet's top-level key holding a track (e.g. `stress` for `stress.physical`),
 // for saving it through a single-key update.
 export const trackKey = (path: string) => path.split('.')[0];

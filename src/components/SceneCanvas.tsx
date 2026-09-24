@@ -10,7 +10,9 @@ import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
-import { stressTracks, takenConsequences, trackKey, withBoxToggled } from '../fate/stress';
+import { consequenceSlots, stressTracks, takenConsequences, trackKey, withBoxToggled } from '../fate/stress';
+import { MONSTER_TYPE, TOKEN_STATES_KEY, tokenActorKey, tokenIdOfActor, tokenSheet, type TokenState } from '../fate/tokenState';
+import { getPath, setPath } from '../layout/core';
 import { fetchLayoutTab, layoutTabData, updateLayoutTab, updateSheetKey } from '../fate/sheetData';
 import { isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
@@ -47,6 +49,8 @@ export type TokenShape = BaseShape & {
   y: number;
   itemShortname: string;
   itemTitle: string;
+  // The item's category; tokens placed before this was recorded look it up instead.
+  itemType?: string;
   color: string;
 };
 
@@ -146,6 +150,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [liveRolls, setLiveRolls] = useState<Roll[]>([]);
   const [liveCombat, setLiveCombat] = useState<CombatState | null>(null);
   const [savedCombat, setSavedCombat] = useState<CombatState | null>(null);
+  const [liveTokenStates, setLiveTokenStates] = useState<{ [tokenId: string]: TokenState }>({});
+  const [savedTokenStates, setSavedTokenStates] = useState<{ [tokenId: string]: TokenState }>({});
   const [savedAspects, setSavedAspects] = useState<SceneAspect[]>([]);
   // Sheet data of the characters in the scene, for their temporary aspects, skills and fate points.
   const [sheets, setSheets] = useState<{ [shortname: string]: Record<string, unknown> }>({});
@@ -179,6 +185,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const yRolls = ydoc?.getMap<Roll>('rolls');
   // The conflict's turn order, if one is running (key `state`).
   const yCombat = ydoc?.getMap<CombatState>('combat');
+  // Monster tokens' own copies of their changing stats (see fate/tokenState.ts).
+  const yTokenStates = ydoc?.getMap<TokenState>(TOKEN_STATES_KEY);
 
   useEffect(() => {
     fetchSettings(campaignShortname).then(settings => setTurnOrder(settings.turnOrder)).catch(() => {});
@@ -210,17 +218,19 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       const sceneSheetAspects = layoutTabData(objData, SCENE_TAB)[SCENE_ASPECTS_KEY];
       setSavedAspects(sceneSheetAspects !== undefined ? fromSceneSheet(sceneSheetAspects) : (objData?.sceneAspects ?? []));
       setSavedCombat(objData?.combat ?? null);
+      setSavedTokenStates(objData?.[TOKEN_STATES_KEY] ?? {});
       setSavedShapes(objData?.mapData ?? []);
     });
   }, [campaignShortname, sceneShortname]);
 
   useEffect(() => {
-    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yRolls || !yCombat) return;
+    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yRolls || !yCombat || !yTokenStates) return;
 
     const updateShapes = () => setLiveShapes(Array.from(yShapes.values()));
     const updateAspects = () => setLiveAspects(Array.from(yAspects.values()));
     const updateRolls = () => setLiveRolls(Array.from(yRolls.values()).sort((a, b) => b.at - a.at));
     const updateCombat = () => setLiveCombat(yCombat.get('state') ?? null);
+    const updateTokenStates = () => setLiveTokenStates(Object.fromEntries(yTokenStates.entries()));
     const updateMeta = () => {
       if (!yMeta.has('width')) return;
       setMeta({
@@ -234,11 +244,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     yAspects.observe(updateAspects);
     yRolls.observe(updateRolls);
     yCombat.observe(updateCombat);
+    yTokenStates.observe(updateTokenStates);
     updateShapes();
     updateMeta();
     updateAspects();
     updateRolls();
     updateCombat();
+    updateTokenStates();
 
     // Persist our own edits; updates that arrive from the server were saved by
     // whoever made them. The data endpoint merges into obj_data, so this leaves
@@ -248,7 +260,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const onUpdate = (_: Uint8Array, origin: unknown) => {
       if (origin === provider) return;
       debounce(`scene-save-${sceneShortname}`, async () => {
-        const sceneData = { mapData: Array.from(yShapes.values()), combat: yCombat.get('state') ?? null };
+        const sceneData = {
+          mapData: Array.from(yShapes.values()),
+          combat: yCombat.get('state') ?? null,
+          [TOKEN_STATES_KEY]: Object.fromEntries(yTokenStates.entries()),
+        };
         try {
           await updateLayoutTab(
             campaignShortname,
@@ -279,6 +295,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       yAspects.unobserve(updateAspects);
       yRolls.unobserve(updateRolls);
       yCombat.unobserve(updateCombat);
+      yTokenStates.unobserve(updateTokenStates);
       ydoc.off('update', onUpdate);
     };
   }, [ydoc]);
@@ -287,12 +304,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // server last started. Shapes are keyed by id, so two clients seeding at once
   // converge instead of duplicating.
   useEffect(() => {
-    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || !yCombat || savedShapes === null || seeded.current) return;
+    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || savedShapes === null || seeded.current) return;
     seeded.current = true;
     ydoc.transact(() => {
       if (yShapes.size === 0) savedShapes.forEach(shape => yShapes.set(shape.id, shape));
       if (yAspects.size === 0) savedAspects.forEach(aspect => yAspects.set(aspect.id, aspect));
       if (!yCombat.has('state') && savedCombat) yCombat.set('state', savedCombat);
+      if (yTokenStates.size === 0) Object.entries(savedTokenStates).forEach(([id, state]) => yTokenStates.set(id, state));
       if (!yMeta.has('width')) {
         yMeta.set('width', meta.width);
         yMeta.set('height', meta.height);
@@ -349,40 +367,73 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const shapes = showLive ? liveShapes : (savedShapes ?? []);
   const aspects = showLive ? liveAspects : savedAspects;
   const combat = showLive ? liveCombat : savedCombat;
+  const tokenStates = showLive ? liveTokenStates : savedTokenStates;
 
-  // One entry per character with a token in the scene.
+  const tokens = shapes.filter((shape): shape is TokenShape => shape.type === 'token');
+  const isMonster = (token: TokenShape) => (token.itemType ?? tokenCandidates.find(c => c.shortname === token.itemShortname)?.item_type) === MONSTER_TYPE;
+  // Several tokens of one character are numbered, e.g. "Goblin 2".
+  const tokenLabel = (token: TokenShape) => {
+    const same = tokens.filter(t => t.itemShortname === token.itemShortname);
+    return same.length > 1 ? `${token.itemTitle} ${same.indexOf(token) + 1}` : token.itemTitle;
+  };
+
+  // Who's in the scene: one entry per PC or NPC, and one per monster token.
   const characters: SceneCharacter[] = [];
-  for (const shape of shapes) {
-    if (shape.type === 'token' && !characters.some(c => c.shortname === shape.itemShortname)) {
-      characters.push({ shortname: shape.itemShortname, title: shape.itemTitle });
+  for (const token of tokens) {
+    if (isMonster(token)) {
+      characters.push({ key: tokenActorKey(token.id), shortname: token.itemShortname, title: tokenLabel(token), scoped: true });
+    } else if (!characters.some(c => c.key === token.itemShortname)) {
+      characters.push({ key: token.itemShortname, shortname: token.itemShortname, title: token.itemTitle });
     }
   }
-  const characterKey = characters.map(c => c.shortname).sort().join(',');
+  const sheetShortnames = [...new Set(tokens.map(t => t.itemShortname))].sort().join(',');
+
+  // The sheet a token plays from: a monster token's own copy of its changing stats over
+  // the monster's sheet, otherwise the character's shared sheet.
+  const tokenView = (token: TokenShape): Record<string, unknown> | undefined => (
+    isMonster(token) ? tokenSheet(sheets[token.itemShortname], tokenStates[token.id]) : sheets[token.itemShortname]
+  );
+  const actorSheet = (key: string): Record<string, unknown> | undefined => {
+    const tokenId = tokenIdOfActor(key);
+    if (!tokenId) return sheets[key];
+    const token = tokens.find(t => t.id === tokenId);
+    return token ? tokenView(token) : undefined;
+  };
+
+  const setTokenState = (tokenId: string, update: (state: TokenState) => TokenState) => {
+    if (!canEdit || !yTokenStates) return;
+    yTokenStates.set(tokenId, update(yTokenStates.get(tokenId) ?? {}));
+  };
 
   const portraitUrl = (shortname: string) => {
     const id = portraitId(sheets[shortname]);
     return id === null ? null : galleryImageUrl(campaignShortname, shortname, id);
   };
 
-  // Every token is a combatant; several tokens of one character are numbered.
-  const tokens = shapes.filter((shape): shape is TokenShape => shape.type === 'token');
+  // Every token is a combatant.
   const combatEntries: CombatEntry[] = tokens.map(token => {
-    const same = tokens.filter(t => t.itemShortname === token.itemShortname);
+    const view = tokenView(token);
     return {
       tokenId: token.id,
-      label: same.length > 1 ? `${token.itemTitle} ${same.indexOf(token) + 1}` : token.itemTitle,
+      label: tokenLabel(token),
       color: token.color,
       portraitUrl: portraitUrl(token.itemShortname),
-      stress: stressTracks(sheets[token.itemShortname]),
-      consequences: takenConsequences(sheets[token.itemShortname]),
+      stress: stressTracks(view),
+      consequences: takenConsequences(view),
+      ...(isMonster(token) ? { consequenceSlots: consequenceSlots(view) } : {}),
     };
   });
 
-  // Ticking a stress box on a card saves it to the freshest copy of the sheet. Tokens of
-  // the same character share its sheet, and so its stress.
+  // Ticking a stress box on a card: a monster token changes its own copy; anyone else
+  // saves to the freshest copy of their sheet, which all their tokens share.
   const toggleStress = async (tokenId: string, path: string, index: number) => {
     const token = tokens.find(t => t.id === tokenId);
     if (!canEdit || !token) return;
+    if (isMonster(token)) {
+      const key = trackKey(path);
+      setTokenState(token.id, state => ({ ...state, [key]: withBoxToggled(tokenView(token), path, index) }));
+      return;
+    }
     const shortname = token.itemShortname;
     const key = trackKey(path);
     setSheetKey(shortname, key, withBoxToggled(sheets[shortname], path, index));
@@ -394,6 +445,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       window.alert(`Couldn't save ${token.itemTitle}'s stress.`);
       loadSheets([shortname]);
     }
+  };
+
+  // A monster token's consequence, typed on its combat card.
+  const setConsequence = (tokenId: string, path: string, text: string) => {
+    const token = tokens.find(t => t.id === tokenId);
+    if (!token || !isMonster(token)) return;
+    const key = trackKey(path);
+    setTokenState(tokenId, state => ({ ...state, [key]: getPath(setPath(tokenView(token) ?? {}, path, text), key) }));
   };
 
   const setCombat = (next: CombatState | null) => {
@@ -443,8 +502,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   };
 
   useEffect(() => {
-    if (characterKey) loadSheets(characterKey.split(','));
-  }, [characterKey]);
+    if (sheetShortnames) loadSheets(sheetShortnames.split(','));
+  }, [sheetShortnames]);
 
   // Sheets aren't live-synced, so whoever changes a character's sheet aspects from a
   // scene bumps a stamp in the scene doc, and everyone else reloads that sheet.
@@ -483,18 +542,23 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     return list.findIndex(entry => entry.name === name);
   };
 
-  // Tags beside a character's token: its sheet's temporary aspects, then the scene's.
-  const tokenTags = (shortname: string): { name: string, freeInvokes: number }[] => [
-    ...(sheetAspects[shortname] ?? []).filter(a => a.name).map(a => ({ name: a.name!, freeInvokes: sheetInvokes(a) })),
-    ...aspects.filter(a => a.target === shortname),
-  ];
+  // Tags beside a token: its character's sheet's temporary aspects, then the scene's.
+  // A monster token only has its own scene aspects.
+  const tokenTags = (token: TokenShape): { name: string, freeInvokes: number }[] => {
+    if (isMonster(token)) return aspects.filter(a => a.target === tokenActorKey(token.id));
+    return [
+      ...(sheetAspects[token.itemShortname] ?? []).filter(a => a.name).map(a => ({ name: a.name!, freeInvokes: sheetInvokes(a) })),
+      ...aspects.filter(a => a.target === token.itemShortname),
+    ];
+  };
 
   // Everything that can be invoked on a roll: the scene's aspects, and the
   // temporary aspects on the sheets of characters in the scene.
-  const titleOf = (shortname: string) => characters.find(c => c.shortname === shortname)?.title ?? shortname;
+  const titleOf = (key: string) => characters.find(c => c.key === key)?.title ?? key;
   const invokableAspects: InvokableAspect[] = [
     ...aspects.map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.target ? a.targetTitle ?? titleOf(a.target) : 'Scene' })),
-    ...Object.entries(sheetAspects).flatMap(([shortname, list]) => list
+    // (Only PCs' and NPCs' sheets: a monster's sheet aspects belong to no token in particular.)
+    ...Object.entries(sheetAspects).filter(([shortname]) => characters.some(c => c.key === shortname)).flatMap(([shortname, list]) => list
       .map((entry, i) => ({ id: sheetAspectId(shortname, i), name: entry.name ?? '', freeInvokes: sheetInvokes(entry), ownerTitle: titleOf(shortname) }))
       .filter(a => a.name)),
   ];
@@ -524,6 +588,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       const sceneAspect = aspects.find(a => a.id === aspectId);
       if (sceneAspect?.kind === 'boost' && sceneAspect.freeInvokes <= 1) removeAspect(aspectId);
       else updateAspect(aspectId, { freeInvokes: aspect.freeInvokes - 1 });
+    } else if (roll.character && tokenIdOfActor(roll.character.key)) {
+      // A monster token pays from its own fate points.
+      const current = fatePoints(actorSheet(roll.character.key!));
+      if (current <= 0) return;
+      setTokenState(tokenIdOfActor(roll.character.key)!, state => ({ ...state, fatePoints: current - 1 }));
     } else if (roll.character) {
       const shortname = roll.character.shortname;
       const current = fatePoints(sheets[shortname]);
@@ -553,8 +622,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const writableAspects = (): Y.Map<SceneAspect> | null => (canEdit && yAspects) ? yAspects : null;
 
   const addAspect = (aspect: Omit<SceneAspect, 'id'>) => {
-    // Temporary character aspects go straight onto the sheet so they outlast the scene.
-    if (aspect.kind === 'temporary' && aspect.target) {
+    // Temporary character aspects go straight onto the sheet so they outlast the scene;
+    // a monster token's stay in the scene with it.
+    if (aspect.kind === 'temporary' && aspect.target && !tokenIdOfActor(aspect.target)) {
       changeSheetAspects(aspect.target, list => [...list, toSheetAspect(aspect)]);
       return;
     }
@@ -599,21 +669,22 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // outlasts the scene. (New temporary aspects go straight to the sheet; this is for
   // ones added to the scene before that.)
   const keepOnSheet = async (aspect: SceneAspect) => {
-    if (!aspect.target) return;
+    if (!aspect.target || tokenIdOfActor(aspect.target)) return;
     if (await changeSheetAspects(aspect.target, list => [...list, toSheetAspect(aspect)])) {
       writableAspects()?.delete(aspect.id);
     }
   };
 
   const endScene = async () => {
-    const kept = aspects.filter(a => a.kind === 'temporary' && a.target);
-    if (!window.confirm('End the scene? Its situation aspects, advantages and boosts will be cleared. Temporary aspects stay on character sheets.')) return;
+    const kept = aspects.filter(a => a.kind === 'temporary' && a.target && !tokenIdOfActor(a.target));
+    if (!window.confirm("End the scene? Its situation aspects, advantages and boosts will be cleared, and monsters' stress, consequences and fate points reset. Temporary aspects stay on character sheets.")) return;
     // A temporary aspect that couldn't be moved to its sheet stays in the scene.
     for (const aspect of kept) await keepOnSheet(aspect);
     const target = writableAspects();
-    if (!target || !ydoc) return;
+    if (!target || !ydoc || !yTokenStates) return;
     ydoc.transact(() => {
       aspects.filter(a => !kept.includes(a)).forEach(a => target.delete(a.id));
+      yTokenStates.clear();
     });
   };
 
@@ -621,8 +692,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   const deleteSelected = () => {
     const target = writableShapes();
-    if (!selectedId || !target) return;
-    target.delete(selectedId);
+    if (!selectedId || !target || !ydoc) return;
+    ydoc.transact(() => {
+      target.delete(selectedId);
+      // A token's scene-scoped state and aspects go with it.
+      yTokenStates?.delete(selectedId);
+      aspects.filter(a => a.target === tokenActorKey(selectedId)).forEach(a => yAspects?.delete(a.id));
+    });
     setSelectedId(null);
   };
 
@@ -665,6 +741,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       y: center.y,
       itemShortname: item.shortname,
       itemTitle: item.title,
+      itemType: item.item_type,
       color: item.item_type === 'pc' ? '#deddca' : item.item_type === 'monster' ? '#ba40f2' : '#e82c17',
     };
     target.set(token.id, token);
@@ -821,6 +898,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         canRun={canEdit && gm}
         canMarkStress={canEdit}
         onToggleStress={toggleStress}
+        onSetConsequence={setConsequence}
         onStart={startCombat}
         onStep={direction => combat && setCombat(stepTurn(combat, presentTokens(), direction))}
         onEnd={() => setCombat(null)}
@@ -941,9 +1019,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                     >
                       {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
                       <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
-                      <Text text={s.itemTitle} y={24} offsetX={20} width={40} align='center' fontSize={12} />
+                      <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} />
                       {/* The character's aspects in play, as tags beside the token. */}
-                      {tokenTags(s.itemShortname).map((tag, i) => (
+                      {tokenTags(s).map((tag, i) => (
                         <Label key={i} x={26} y={-18 + i * 18} listening={false}>
                           <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={0.5} cornerRadius={3} />
                           <Text text={tag.freeInvokes > 0 ? `${tag.name} ${'●'.repeat(tag.freeInvokes)}` : tag.name} fontStyle='italic' fontSize={11} padding={3} fill='#222' />
@@ -985,8 +1063,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       <DiceRoller
         rolls={liveRolls.slice(0, 10)}
         characters={characters}
-        skills={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, skillRatings(sheet)]))}
-        fatePoints={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, fatePoints(sheet)]))}
+        skills={Object.fromEntries(characters.map(c => [c.key, skillRatings(actorSheet(c.key))]))}
+        fatePoints={Object.fromEntries(characters.filter(c => actorSheet(c.key)).map(c => [c.key, fatePoints(actorSheet(c.key))]))}
         aspects={invokableAspects}
         canRoll={canEdit}
         onRoll={addRoll}

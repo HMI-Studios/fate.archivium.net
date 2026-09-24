@@ -24,7 +24,9 @@ export type Roll = {
   at: number;
   // Who clicked the button (Archivium username).
   by: string;
-  character?: { shortname: string, title: string };
+  // `key` is the scene actor (see fate/tokenState.ts): a monster token rolls and pays
+  // fate points on its own. Rolls from before it only have the shortname.
+  character?: { shortname: string, title: string, key?: string };
   skill?: string;
   skillRating: number;
   modifier: number;
