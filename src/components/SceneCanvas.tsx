@@ -6,6 +6,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
+import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
 import { useSyncedDoc } from '../sync';
@@ -88,6 +89,28 @@ function scaleShape(shape: Shape, sx: number, sy: number): Shape {
     case 'line':
       return { ...shape, points: shape.points.map((p, i) => p * (i % 2 === 0 ? sx : sy)) };
   }
+}
+
+const TOKEN_RADIUS = 20;
+
+// A token's circle: the character's portrait clipped to it, ringed in the token's
+// color, or just the color while there's no portrait (or it hasn't loaded yet).
+function TokenFace({ color, portraitUrl, selected }: { color: string, portraitUrl: string | null, selected: boolean }) {
+  const image = useCanvasImage(portraitUrl);
+  if (!image) {
+    return <Circle radius={TOKEN_RADIUS} fill={color} stroke={selected ? 'red' : 'black'} strokeWidth={selected ? 3 : 1} />;
+  }
+  const inner = TOKEN_RADIUS - 2;
+  const scale = Math.max((2 * inner) / image.width, (2 * inner) / image.height);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  return <>
+    <Circle radius={TOKEN_RADIUS} fill={color} />
+    <Group clipFunc={ctx => ctx.arc(0, 0, inner, 0, Math.PI * 2)}>
+      <KonvaImage image={image} x={-width / 2} y={-height / 2} width={width} height={height} />
+    </Group>
+    <Circle radius={TOKEN_RADIUS} stroke={selected ? 'red' : color} strokeWidth={selected ? 3 : 2.5} />
+  </>;
 }
 
 interface Props {
@@ -358,6 +381,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const name = sheetAspects[shortname]?.[index]?.name;
     if (list[index]?.name === name) return index;
     return list.findIndex(entry => entry.name === name);
+  };
+
+  const portraitUrl = (shortname: string) => {
+    const id = portraitId(sheets[shortname]);
+    return id === null ? null : galleryImageUrl(campaignShortname, shortname, id);
   };
 
   // Tags beside a character's token: its sheet's temporary aspects, then the scene's.
@@ -778,7 +806,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                       onDragMove={e => handleDragMove(s.id, e)}
                       onDragEnd={e => handleDragMove(s.id, e)}
                     >
-                      <Circle radius={20} fill={s.color} stroke={selected ? 'red' : 'black'} strokeWidth={selected ? 3 : 1} />
+                      <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
                       <Text text={s.itemTitle} y={24} offsetX={20} width={40} align='center' fontSize={12} />
                       {/* The character's aspects in play, as tags beside the token. */}
                       {tokenTags(s.itemShortname).map((tag, i) => (
