@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
 import NewItem from './pages/NewItem';
 import Map from './pages/Map';
+import Room from './pages/Room';
 
 export const ARCHIVIUM_URL = 'https://dev.archivium.net';
 
@@ -43,6 +44,7 @@ export default function App() {
         <Route path='new' element={<NewCampaign />} />
         <Route path='campaigns'>
           <Route path=':campaignShortname' element={<Campaign user={user} />} />
+          <Route path=':campaignShortname/play' element={<Room user={user} />} />
           <Route path=':campaignShortname/items/new' element={<NewItem />} />
           <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />
           <Route path=':campaignShortname/maps'>

@@ -56,6 +56,7 @@ export default function Campaign(props) {
   
   return <>
     <h1>{campaign.title}</h1>
+    <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/play`}>Enter the game room</Link>
 
     <h2>Characters</h2>
     <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/items/new?type=pc`}>New Character</Link>
