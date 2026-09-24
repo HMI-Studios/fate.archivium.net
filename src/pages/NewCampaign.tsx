@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ARCHIVIUM_URL } from '../App';
 import { useNavigate } from 'react-router';
+import { FATE_SHEETS_CONFIG } from '../fate/coreLayout';
 
 type NewCampaign = {
   title: string,
@@ -22,6 +23,8 @@ export default function NewCampaign() {
     discussion_open: false,
     obj_data: {
       isFateCampaign: true,
+      // Character sheet layouts for Archivium to render; see fate/coreLayout.ts.
+      sheets: FATE_SHEETS_CONFIG,
       cats: {
         npc: [
           "NPC",
