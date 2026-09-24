@@ -12,7 +12,7 @@ export default function Home() {
         ...campaign,
         created_at: new Date(campaign.created_at),
         updated_at: new Date(campaign.updated_at),
-        obj_data: JSON.parse(campaign.obj_data),
+        obj_data: typeof campaign.obj_data === 'string' ? JSON.parse(campaign.obj_data) : campaign.obj_data,
       }));
       setCampaigns(data.filter(c => c.obj_data.isFateCampaign));
     });
