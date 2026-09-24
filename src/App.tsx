@@ -49,7 +49,7 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Navbar user={user} />}>
-        <Route index element={<Home />} />
+        <Route index element={<Home user={user} />} />
         <Route path='new' element={<NewCampaign />} />
         <Route path='campaigns'>
           <Route path=':campaignShortname' element={<Campaign user={user} />} />

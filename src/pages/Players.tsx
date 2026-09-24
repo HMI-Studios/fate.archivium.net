@@ -1,12 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
-import Breadcrumbs, { archiviumUniverseUrl } from '../components/Breadcrumbs';
-import { cancelInvite, inviteUser, joinLink, setPermission, userExists } from '../fate/members';
+import Breadcrumbs from '../components/Breadcrumbs';
+import { approveRequest, cancelInvite, denyRequest, fetchInvites, fetchRequests, inviteUser, joinLink, setPermission, userExists, type AccessListing } from '../fate/members';
 import { CAMPAIGN_ROLES, isGameMaster, PERMS, roleLabel } from '../perms';
 import type { Campaign } from './Campaign';
-
-type SentInvite = { username: string, level: number };
 
 interface Props {
   user: any;
@@ -20,13 +18,21 @@ export default function Players({ user }: Props) {
 
   const [username, setUsername] = useState('');
   const [level, setLevel] = useState<number>(PERMS.WRITE);
-  const [sent, setSent] = useState<SentInvite[]>([]);
+  const [invites, setInvites] = useState<AccessListing[]>([]);
+  const [requests, setRequests] = useState<AccessListing[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
 
   const load = async () => {
     const response = await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}`, { credentials: 'include' });
     if (!response.ok) throw new Error(`Could not load the campaign (${response.status}).`);
-    setCampaign(await response.json());
+    const data: Campaign = await response.json();
+    setCampaign(data);
+    // Only admins can see pending invitations and requests.
+    if (isGameMaster(data, user)) {
+      const [pendingInvites, pendingRequests] = await Promise.all([fetchInvites(data.shortname), fetchRequests(data.shortname)]);
+      setInvites(pendingInvites);
+      setRequests(pendingRequests);
+    }
   };
 
   useEffect(() => {
@@ -65,7 +71,7 @@ export default function Players({ user }: Props) {
       if (!await userExists(name)) throw new Error(`There's no Archivium user called "${name}".`);
       if (members.some(m => m.username === name)) throw new Error(`${name} is already in this campaign; change their role below instead.`);
       await inviteUser(campaignShortname, name, level);
-      setSent(current => [{ username: name, level }, ...current.filter(s => s.username !== name)]);
+      await load();
       setUsername('');
     });
   };
@@ -131,34 +137,50 @@ export default function Players({ user }: Props) {
           <button type='submit' disabled={busy || !username.trim()}>Invite</button>
         </form>
         <p className='ma-0 mt-1'><small style={{ opacity: 0.8 }}>
-          {CAMPAIGN_ROLES.map(r => `${r.label}: ${r.description.toLowerCase()}.`).join(' ')} They get an Archivium
-          notification, and a link to accept it here once you send it to them.
+          {CAMPAIGN_ROLES.map(r => `${r.label}: ${r.description.toLowerCase()}.`).join(' ')} They'll see the
+          invitation in their campaign list here, and get an Archivium notification.
         </small></p>
 
-        {sent.length > 0 && <>
-          <h3 className='mb-1'>Invitations you've sent</h3>
-          <ul className='ma-0 pa-0 d-flex flex-col gap-2' style={{ listStyle: 'none' }}>
-            {sent.map(invite => {
-              const link = joinLink(campaignShortname, invite.level);
+        {requests.length > 0 && <>
+          <h3 className='mb-1'>Asking to join</h3>
+          <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
+            {requests.map(request => (
+              <li key={request.username} className='d-flex align-center gap-2 flex-wrap'>
+                <span><b>{request.username}</b> as {roleLabel(request.permission_level).toLowerCase()}</span>
+                <button disabled={busy || request.permission_level > myLevel} onClick={() => run(async () => {
+                  await approveRequest(campaignShortname, request.username, request.permission_level);
+                  await load();
+                })}>Approve</button>
+                <button disabled={busy} onClick={() => run(async () => {
+                  await denyRequest(campaignShortname, request.username);
+                  await load();
+                })}>Deny</button>
+              </li>
+            ))}
+          </ul>
+        </>}
+
+        {invites.length > 0 && <>
+          <h3 className='mb-1'>Invited</h3>
+          <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
+            {invites.map(invite => {
+              const link = joinLink(campaignShortname, invite.permission_level);
               return (
-                <li key={invite.username} className='d-flex flex-col gap-1'>
-                  <span><b>{invite.username}</b> as {roleLabel(invite.level)}</span>
-                  <span className='d-flex gap-2 flex-wrap align-center'>
-                    <code style={{ overflowWrap: 'anywhere' }}>{link}</code>
-                    <button onClick={() => copy(link)}>{copied === link ? 'Copied' : 'Copy link'}</button>
-                    <button disabled={busy} onClick={() => run(async () => {
-                      await cancelInvite(campaignShortname, invite.username);
-                      setSent(current => current.filter(s => s.username !== invite.username));
-                    })}>Cancel invitation</button>
+                <li key={invite.username} className='d-flex align-center gap-2 flex-wrap'>
+                  <span>
+                    <b>{invite.username}</b> as {roleLabel(invite.permission_level).toLowerCase()}
+                    {invite.inviter_username && <small style={{ opacity: 0.8 }}> (invited by {invite.inviter_username})</small>}
                   </span>
+                  <button onClick={() => copy(link)} title={link}>{copied === link ? 'Copied' : 'Copy join link'}</button>
+                  <button disabled={busy} onClick={() => run(async () => {
+                    await cancelInvite(campaignShortname, invite.username);
+                    await load();
+                  })}>Cancel</button>
                 </li>
               );
             })}
           </ul>
         </>}
-        <p className='mt-3'><small style={{ opacity: 0.8 }}>
-          Invitations sent earlier, and requests to join, are listed on the campaign's <a className='link link-animated' href={`${archiviumUniverseUrl(campaignShortname)}/permissions`}>permissions page in Archivium</a>.
-        </small></p>
       </>
       : <p>Only the GM can invite people or change roles.</p>}
   </>;

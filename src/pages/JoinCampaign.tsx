@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import Breadcrumbs from '../components/Breadcrumbs';
-import { acceptInvite, declineInvite } from '../fate/members';
+import { acceptInvite, declineInvite, fetchMyInvites } from '../fate/members';
 import { PERMS, roleLabel } from '../perms';
 
-// Where an invitation link lands (see fate/members.ts joinLink). Archivium doesn't let
-// invitees see a private campaign, or their invitation, before accepting, so this page
-// works from the link: accepting fails if there's no matching invitation.
+// Where an invitation link lands (see fate/members.ts joinLink). The invitation itself
+// comes from the user's pending invitations; the link's level is only a fallback.
 
-type Status = 'loading' | 'invited' | 'member' | 'accepted' | 'declined';
+type Status = 'loading' | 'invited' | 'uninvited' | 'member' | 'accepted' | 'declined';
 
 interface Props {
   user: any;
@@ -19,7 +18,8 @@ export default function JoinCampaign({ user }: Props) {
   const { campaignShortname } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const level = Number(searchParams.get('level')) || PERMS.WRITE;
+  const [level, setLevel] = useState(Number(searchParams.get('level')) || PERMS.WRITE);
+  const [inviter, setInviter] = useState<string | null>(null);
 
   const [status, setStatus] = useState<Status>('loading');
   const [title, setTitle] = useState<string | null>(null);
@@ -28,16 +28,22 @@ export default function JoinCampaign({ user }: Props) {
 
   useEffect(() => {
     if (!campaignShortname) return;
-    fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}`, { credentials: 'include' }).then(async (response) => {
-      if (!response.ok) {
-        // Private campaigns can't be read until you've joined.
-        setStatus('invited');
-        return;
+    (async () => {
+      const invite = (await fetchMyInvites().catch(() => [])).find(i => i.universe_shortname === campaignShortname);
+      if (invite) {
+        setLevel(invite.permission_level);
+        setTitle(invite.universe_title);
+        setInviter(invite.inviter_username);
       }
-      const campaign = await response.json();
-      setTitle(campaign.title);
-      setStatus((campaign.author_permissions?.[user.id] ?? 0) >= level ? 'member' : 'invited');
-    }).catch(() => setStatus('invited'));
+      // Private campaigns can't be read until you've joined.
+      const response = await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}`, { credentials: 'include' }).catch(() => null);
+      const campaign = response?.ok ? await response.json() : null;
+      if (campaign) setTitle(campaign.title);
+      const myLevel = campaign?.author_permissions?.[user.id] ?? 0;
+      if (invite && invite.permission_level > myLevel) setStatus('invited');
+      else if (myLevel > 0) setStatus('member');
+      else setStatus('uninvited');
+    })();
   }, [campaignShortname]);
 
   if (!campaignShortname) return <>No campaign specified!</>;
@@ -72,12 +78,17 @@ export default function JoinCampaign({ user }: Props) {
       You're already in this campaign. <Link className='link link-animated' to={`/campaigns/${campaignShortname}`}>Go to it</Link>.
     </p>}
     {status === 'invited' && <>
-      <p className='ma-0'>You've been invited to join as a <b>{roleLabel(level).toLowerCase()}</b>, signed in as <b>{user.username}</b>.</p>
+      <p className='ma-0'>
+        {inviter ? <><b>{inviter}</b> invited you</> : "You've been invited"} to join as a <b>{roleLabel(level).toLowerCase()}</b>, signed in as <b>{user.username}</b>.
+      </p>
       <div className='d-flex gap-2'>
         <button disabled={busy} onClick={() => respond(true)}>Accept</button>
         <button disabled={busy} onClick={() => respond(false)}>Decline</button>
       </div>
     </>}
+    {status === 'uninvited' && <p className='ma-0'>
+      There's no invitation to this campaign for <b>{user.username}</b>. It may have been cancelled, or sent to a different username.
+    </p>}
     {status === 'declined' && <p className='ma-0'>You've declined the invitation. <Link className='link link-animated' to='/'>Back to your campaigns</Link>.</p>}
     {error && <p className='color-error ma-0'>{error}</p>}
     <small style={{ opacity: 0.8 }}>Not {user.username}? <a className='link link-animated' href={`${ARCHIVIUM_URL}/login?${new URLSearchParams({ page: window.location.href })}`}>Log in as someone else</a>.</small>
