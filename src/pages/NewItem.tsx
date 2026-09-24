@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ARCHIVIUM_URL } from '../App';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import Breadcrumbs from '../components/Breadcrumbs';
+import { withDefaultTabs } from '../layout/typeConfig';
 import { toShortname } from '../util';
 import type { Campaign } from './Campaign';
 
@@ -53,13 +54,16 @@ export default function NewItem({ fixedType }: Props) {
       return;
     }
 
+    // Start with the tabs the campaign configures for this type, as Archivium's own form does.
+    const objData = withDefaultTabs(newItem.obj_data, campaign?.obj_data, newItem.item_type);
+
     const response = await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items`, {
       credentials: 'include',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(newItem),
+      body: JSON.stringify({ ...newItem, obj_data: objData }),
     });
 
     if (!response.ok) {
@@ -76,7 +80,8 @@ export default function NewItem({ fixedType }: Props) {
         },
         body: JSON.stringify({
           title: newItem.title,
-          obj_data: {},
+          // This save replaces obj_data, so it has to carry the new item's tabs too.
+          obj_data: objData,
           map: { id: null, width: 1000, height: 1000, image_id: null, locations: [] },
         }),
       });

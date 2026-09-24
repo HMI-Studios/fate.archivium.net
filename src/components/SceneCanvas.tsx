@@ -10,7 +10,7 @@ import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffec
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { stressTracks, takenConsequences, trackKey, withBoxToggled } from '../fate/stress';
-import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
+import { fetchLayoutTab, layoutTabData, updateLayoutTab, updateSheetKey } from '../fate/sheetData';
 import { isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
@@ -129,10 +129,10 @@ interface Props {
   userName?: string;
 }
 
-// Where temporary aspects kept on a character are stored (the Fate Core sheet's root).
-const SHEET_ROOT = FATE_CORE_LAYOUT.root;
-// Where a scene's aspects are stored on its item (the Fate scene sheet's root).
-const SCENE_ROOT = FATE_SCENE_LAYOUT.root;
+// The layout tabs holding characters' sheets (temporary aspects, stress, fate points)
+// and a scene's own sheet (its aspects).
+const SHEET_TAB = FATE_CORE_LAYOUT.id;
+const SCENE_TAB = FATE_SCENE_LAYOUT.id;
 
 export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true, userName = '' }: Props) {
   const doc = useSyncedDoc(`scene/${campaignShortname}/${sceneShortname}`);
@@ -200,7 +200,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         }));
       }
       // Scenes saved before scene sheets kept their aspects in obj_data.sceneAspects.
-      const sceneSheetAspects = objData?.[SCENE_ROOT]?.[SCENE_ASPECTS_KEY];
+      const sceneSheetAspects = layoutTabData(objData, SCENE_TAB)[SCENE_ASPECTS_KEY];
       setSavedAspects(sceneSheetAspects !== undefined ? fromSceneSheet(sceneSheetAspects) : (objData?.sceneAspects ?? []));
       setSavedCombat(objData?.combat ?? null);
       setSavedShapes(objData?.mapData ?? []);
@@ -236,24 +236,32 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     // Persist our own edits; updates that arrive from the server were saved by
     // whoever made them. The data endpoint merges into obj_data, so this leaves
     // the item's other Archivium content (body, tabs, etc.) untouched. Aspects go on
-    // the scene sheet, applied over a fresh copy so its other fields (which can be
-    // edited in Archivium) are kept.
+    // the scene sheet tab, applied over a fresh copy so its other fields (which can
+    // be edited in Archivium) and the item's other layout tabs are kept.
     const onUpdate = (_: Uint8Array, origin: unknown) => {
       if (origin === provider) return;
       debounce(`scene-save-${sceneShortname}`, async () => {
-        const sceneSheet = await fetchSheetRoot(campaignShortname, sceneShortname, SCENE_ROOT).catch(() => null);
-        await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${sceneShortname}/data`, {
-          credentials: 'include',
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            mapData: Array.from(yShapes.values()),
-            combat: yCombat.get('state') ?? null,
-            ...(sceneSheet ? { [SCENE_ROOT]: { ...sceneSheet, [SCENE_ASPECTS_KEY]: toSceneSheet(Array.from(yAspects.values())) } } : {}),
-          }),
-        });
+        const sceneData = { mapData: Array.from(yShapes.values()), combat: yCombat.get('state') ?? null };
+        try {
+          await updateLayoutTab(
+            campaignShortname,
+            sceneShortname,
+            SCENE_TAB,
+            fresh => ({ ...fresh, [SCENE_ASPECTS_KEY]: toSceneSheet(Array.from(yAspects.values())) }),
+            sceneData,
+          );
+        } catch {
+          // Without a fresh copy of the scene sheet, still save the map; aspects
+          // are saved with the next change.
+          await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${sceneShortname}/data`, {
+            credentials: 'include',
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(sceneData),
+          }).catch(() => {});
+        }
       }, 500);
     };
     ydoc.on('update', onUpdate);
@@ -372,7 +380,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const key = trackKey(path);
     setSheetKey(shortname, key, withBoxToggled(sheets[shortname], path, index));
     try {
-      const saved = await updateSheetKey(campaignShortname, shortname, SHEET_ROOT, key, fresh => withBoxToggled({ [key]: fresh }, path, index));
+      const saved = await updateSheetKey(campaignShortname, shortname, SHEET_TAB, key, fresh => withBoxToggled({ [key]: fresh }, path, index));
       setSheetKey(shortname, key, saved);
       ySheetStamps?.set(shortname, Date.now());
     } catch {
@@ -413,7 +421,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   const loadSheets = (shortnames: string[]) => {
     shortnames.forEach(shortname => {
-      fetchSheetRoot(campaignShortname, shortname, SHEET_ROOT)
+      fetchLayoutTab(campaignShortname, shortname, SHEET_TAB)
         .then(root => setSheets(current => ({ ...current, [shortname]: root })))
         .catch(() => {});
     });
@@ -441,7 +449,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     if (!canEdit) return false;
     setSheetKey(shortname, TEMPORARY_ASPECTS_KEY, update(sheetAspects[shortname] ?? []));
     try {
-      const saved = await updateSheetKey<SheetAspect[]>(campaignShortname, shortname, SHEET_ROOT, TEMPORARY_ASPECTS_KEY, list => update(Array.isArray(list) ? list : []));
+      const saved = await updateSheetKey<SheetAspect[]>(campaignShortname, shortname, SHEET_TAB, TEMPORARY_ASPECTS_KEY, list => update(Array.isArray(list) ? list : []));
       setSheetKey(shortname, TEMPORARY_ASPECTS_KEY, saved);
       ySheetStamps?.set(shortname, Date.now());
       return true;
@@ -507,7 +515,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       if (current <= 0) return;
       setSheetKey(shortname, 'fatePoints', current - 1);
       try {
-        const saved = await updateSheetKey<number>(campaignShortname, shortname, SHEET_ROOT, 'fatePoints', fresh => Math.max(0, (typeof fresh === 'number' ? fresh : current) - 1));
+        const saved = await updateSheetKey<number>(campaignShortname, shortname, SHEET_TAB, 'fatePoints', fresh => Math.max(0, (typeof fresh === 'number' ? fresh : current) - 1));
         setSheetKey(shortname, 'fatePoints', saved);
         ySheetStamps?.set(shortname, Date.now());
       } catch {

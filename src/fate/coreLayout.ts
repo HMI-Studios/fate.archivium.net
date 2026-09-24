@@ -1,8 +1,9 @@
 import type { Expr, SheetLayout } from '../layout/core';
 
-// The Fate Core character sheet as a declarative layout. Data is stored on
-// the character's item as obj_data.fate. New campaigns store this layout on
-// the universe (see fate/universeData.ts), so Archivium can render the sheet too.
+// The Fate Core character sheet as a declarative layout: an Archivium tab type. Data
+// is stored on the character's item as obj_data.layoutTabs['fate-core']. New
+// campaigns store this layout on the universe (see fate/universeData.ts), so
+// Archivium can render the sheet too.
 
 export const FATE_CORE_LAYOUT_ID = 'fate-core';
 
@@ -25,7 +26,6 @@ export const FATE_CORE_LAYOUT: SheetLayout = {
   version: 1,
   id: FATE_CORE_LAYOUT_ID,
   title: 'Character Sheet',
-  root: 'fate',
   rows: [
     {
       sections: [

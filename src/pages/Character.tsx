@@ -3,11 +3,11 @@ import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { portraitId, PORTRAIT_KEY, type GalleryImage } from '../fate/portrait';
-import { saveSheetChanges } from '../fate/sheetData';
+import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PortraitSlot from '../components/PortraitSlot';
 import { type SheetLayout } from '../layout/core';
-import { layoutForType } from '../layout/typeConfig';
+import { tabTypesOf } from '../layout/typeConfig';
 import SheetRenderer from '../layout/SheetRenderer';
 import { SHEET_LAYOUT_CSS } from '../layout/styles';
 import { debounce } from '../util';
@@ -41,13 +41,14 @@ export default function Character() {
       }
       const campaign = await campaignResponse.json();
       const item = await itemResponse.json();
-      // Campaigns created before sheet layouts were stored on the universe fall back to Fate Core.
-      const sheetLayout = layoutForType(parseObjData(campaign.obj_data), item.item_type) ?? FATE_CORE_LAYOUT;
+      // The campaign's own copy of the Fate Core tab type, if it has one (it may have
+      // been customized in Archivium); campaigns without one use the built-in layout.
+      const sheetLayout = tabTypesOf(parseObjData(campaign.obj_data))[FATE_CORE_LAYOUT.id] ?? FATE_CORE_LAYOUT;
       setTitle(item.title);
       setGallery(item.gallery ?? []);
       setHasGalleryTab(parseObjData(item.obj_data)?.gallery !== undefined);
       setLayout(sheetLayout);
-      const sheetData = parseObjData(item.obj_data)?.[sheetLayout.root] ?? {};
+      const sheetData = layoutTabData(parseObjData(item.obj_data), sheetLayout.id);
       base.current = sheetData;
       setData(sheetData);
     });
@@ -68,7 +69,7 @@ export default function Character() {
     setSaveStatus('saving');
     debounce('character-save', async () => {
       try {
-        const saved = await saveSheetChanges(campaignShortname, characterShortname, layout.root, base.current, next);
+        const saved = await saveSheetChanges(campaignShortname, characterShortname, layout.id, base.current, next);
         base.current = saved;
         // Show what was saved elsewhere too, unless the user has kept typing.
         setData((current: unknown) => current === next ? saved : current);
