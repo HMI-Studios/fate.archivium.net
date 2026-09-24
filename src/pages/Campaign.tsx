@@ -58,9 +58,25 @@ export default function Campaign(props) {
     <h1>{campaign.title}</h1>
 
     <h2>Characters</h2>
-    <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/maps/new`}>New Character</Link>
+    <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/items/new?type=pc`}>New Character</Link>
     <ul>
       {items.filter(item => item.item_type === 'pc').map(item => (<li key={item.shortname}>
+        <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/characters/${item.shortname}`}>{item.title}</Link>
+      </li>))}
+    </ul>
+
+    <h2>NPCs</h2>
+    <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/items/new?type=npc`}>New NPC</Link>
+    <ul>
+      {items.filter(item => item.item_type === 'npc').map(item => (<li key={item.shortname}>
+        <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/characters/${item.shortname}`}>{item.title}</Link>
+      </li>))}
+    </ul>
+
+    <h2>Monsters</h2>
+    <Link className='link link-animated ml-2' to={`/campaigns/${campaign.shortname}/items/new?type=monster`}>New Monster</Link>
+    <ul>
+      {items.filter(item => item.item_type === 'monster').map(item => (<li key={item.shortname}>
         <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/characters/${item.shortname}`}>{item.title}</Link>
       </li>))}
     </ul>
