@@ -112,7 +112,7 @@ export const FATE_CORE_LAYOUT: SheetLayout = {
     {
       sections: [
         {
-          // Aspects that outlast a scene; the scene panel can move them here.
+          // Aspects that outlast a scene; the scene panel shows and edits these too.
           title: 'Temporary Aspects',
           fields: [{
             widget: 'entryList',
@@ -121,7 +121,8 @@ export const FATE_CORE_LAYOUT: SheetLayout = {
             addLabel: 'Add Temporary Aspect',
             fields: [
               { key: 'name', placeholder: 'Aspect' },
-              { key: 'note', placeholder: 'Free invokes, how long it lasts' },
+              { key: 'invokes', placeholder: 'Free invokes' },
+              { key: 'note', placeholder: 'How long it lasts' },
             ],
           }],
         },
