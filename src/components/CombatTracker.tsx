@@ -1,4 +1,4 @@
-import { CONFLICT_LABELS, type CombatState, type ConflictKind } from '../fate/combat';
+import { CONFLICT_LABELS, modeOf, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
 import type { Consequence, StressTrack } from '../fate/stress';
 
 // A token on the map, as shown in the turn order.
@@ -25,6 +25,13 @@ interface Props {
   onMove: (tokenId: string, direction: 1 | -1) => void;
   onRemove: (tokenId: string) => void;
   onAdd: (tokenId: string) => void;
+  // Popcorn: anyone who can edit the scene hands the turn on (the app can't tell who
+  // plays which token); the GM can also undo a pass or set whose turn it is.
+  canPass: boolean;
+  onPass: (tokenId: string) => void;
+  onNextRound: (tokenId: string) => void;
+  onUndo: () => void;
+  onSetCurrent: (tokenId: string) => void;
 }
 
 const CURRENT_COLOR = '#f5c542';
@@ -67,7 +74,7 @@ function StressRow({ track, canMark, onToggle }: { track: StressTrack, canMark: 
   );
 }
 
-export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onStart, onStep, onEnd, onMove, onRemove, onAdd }: Props) {
+export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onStart, onStep, onEnd, onMove, onRemove, onAdd, canPass, onPass, onNextRound, onUndo, onSetCurrent }: Props) {
   if (!state) {
     if (!canRun || entries.length === 0) return null;
     return (
@@ -83,6 +90,11 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
   const inOrder = state.order.filter(id => byId.has(id));
   const outside = entries.filter(e => !state.order.includes(e.tokenId));
   const current = state.current ? byId.get(state.current) : undefined;
+  const popcorn = modeOf(state) === 'popcorn';
+  const acted = new Set(state.acted ?? []);
+  const waiting = waitingToAct(state, new Set(byId.keys()));
+  // Popcorn: once everyone else has acted, whoever's acting now picks who starts the next round.
+  const roundOver = popcorn && waiting.length === 0;
 
   return (
     <section
@@ -94,10 +106,27 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
         <b>{CONFLICT_LABELS[state.kind]}</b>
         <span>Round {state.round}</span>
         {current && <span>· <b>{current.label}</b>'s turn</span>}
-        {canRun && (
+        {popcorn && <small style={{ opacity: 0.8 }}>
+          {roundOver ? `(${current?.label ?? 'They'} picks who starts round ${state.round + 1})` : '(popcorn: they pick who goes next)'}
+        </small>}
+        {canRun && !popcorn && (
           <span className='d-flex gap-1 flex-wrap' style={{ marginLeft: 'auto' }}>
             <button onClick={() => onStep(-1)}>‹ Previous</button>
             <button onClick={() => onStep(1)}><b>Next turn ›</b></button>
+            <button onClick={() => { if (window.confirm('End the conflict?')) onEnd(); }}>End</button>
+          </span>
+        )}
+        {canRun && popcorn && (
+          <span className='d-flex gap-1 flex-wrap align-center' style={{ marginLeft: 'auto' }}>
+            <button onClick={onUndo} disabled={acted.size === 0} title='Take back the last pass'>Undo</button>
+            <select
+              aria-label="Set whose turn it is"
+              value=''
+              onChange={({ target }) => { if (target.value) onSetCurrent(target.value); }}
+            >
+              <option value=''>Set turn…</option>
+              {inOrder.filter(id => id !== state.current).map(id => <option key={id} value={id}>{byId.get(id)!.label}</option>)}
+            </select>
             <button onClick={() => { if (window.confirm('End the conflict?')) onEnd(); }}>End</button>
           </span>
         )}
@@ -106,6 +135,7 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
         {inOrder.map((id, i) => {
           const entry = byId.get(id)!;
           const isCurrent = id === state.current;
+          const hasActed = popcorn && acted.has(id);
           return (
             <li
               key={id}
@@ -115,9 +145,10 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
                 flex: '0 0 auto', width: '7.5rem', padding: '0.35rem 0.25rem', borderRadius: 6,
                 border: `2px solid ${isCurrent ? CURRENT_COLOR : 'transparent'}`,
                 background: isCurrent ? 'rgb(245 197 66 / 12%)' : undefined,
+                opacity: hasActed ? 0.55 : 1,
               }}
             >
-              <small style={{ opacity: 0.7 }}>{i + 1}</small>
+              <small style={{ opacity: 0.7 }}>{popcorn ? (isCurrent ? 'acting' : hasActed ? 'acted' : 'waiting') : i + 1}</small>
               <Face entry={entry} size='2.75rem' />
               <small style={{ textAlign: 'center', overflowWrap: 'anywhere', lineHeight: 1.2, marginTop: 2 }}>{entry.label}</small>
               <div className='d-flex flex-col gap-0 mt-1'>
@@ -134,11 +165,17 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
                   ))}
                 </ul>
               )}
+              {canPass && popcorn && !roundOver && waiting.includes(id) && (
+                <button className='mt-1' onClick={() => onPass(id)} title={`${current?.label ?? 'The current combatant'} is done; ${entry.label} goes next`}>Pass to</button>
+              )}
+              {canPass && roundOver && (
+                <button className='mt-1' onClick={() => onNextRound(id)} title={`Start round ${state.round + 1} with ${entry.label}`}>Starts round {state.round + 1}</button>
+              )}
               {canRun && (
                 <span className='d-flex gap-0 mt-1'>
-                  <button title='Earlier' aria-label={`Move ${entry.label} earlier`} disabled={i === 0} onClick={() => onMove(id, -1)} style={{ padding: '0 0.35rem' }}>‹</button>
+                  {!popcorn && <button title='Earlier' aria-label={`Move ${entry.label} earlier`} disabled={i === 0} onClick={() => onMove(id, -1)} style={{ padding: '0 0.35rem' }}>‹</button>}
                   <button title='Remove from the conflict' aria-label={`Remove ${entry.label} from the conflict`} onClick={() => onRemove(id)} style={{ padding: '0 0.35rem' }}>×</button>
-                  <button title='Later' aria-label={`Move ${entry.label} later`} disabled={i === inOrder.length - 1} onClick={() => onMove(id, 1)} style={{ padding: '0 0.35rem' }}>›</button>
+                  {!popcorn && <button title='Later' aria-label={`Move ${entry.label} later`} disabled={i === inOrder.length - 1} onClick={() => onMove(id, 1)} style={{ padding: '0 0.35rem' }}>›</button>}
                 </span>
               )}
             </li>
@@ -149,7 +186,7 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
         <div className='d-flex align-center gap-1 flex-wrap'>
           <small>Not in the conflict:</small>
           {outside.map(e => (
-            <button key={e.tokenId} onClick={() => onAdd(e.tokenId)} title='Add at the end of the turn order'>+ {e.label}</button>
+            <button key={e.tokenId} onClick={() => onAdd(e.tokenId)} title={popcorn ? 'Add to the conflict' : 'Add at the end of the turn order'}>+ {e.label}</button>
           ))}
         </div>
       )}

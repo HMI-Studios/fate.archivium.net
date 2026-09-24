@@ -4,7 +4,8 @@ import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Ta
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
 import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
-import { initiativeOrder, moveInOrder, stepTurn, type CombatState, type ConflictKind } from '../fate/combat';
+import { initiativeOrder, modeOf, moveInOrder, passTurn, setCurrent, startNextRound, stepTurn, undoPass, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
+import { fetchSettings, type TurnOrderMode } from '../fate/settings';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
@@ -156,6 +157,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [uploading, setUploading] = useState(false);
 
   const [tokenCandidates, setTokenCandidates] = useState<MapItem[]>([]);
+  // The campaign's turn order setting, used when a conflict starts.
+  const [turnOrder, setTurnOrder] = useState<TurnOrderMode>('initiative');
   const [tokenPick, setTokenPick] = useState('');
 
   const [tool, setTool] = useState<'pan' | 'draw'>('pan');
@@ -176,6 +179,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const yRolls = ydoc?.getMap<Roll>('rolls');
   // The conflict's turn order, if one is running (key `state`).
   const yCombat = ydoc?.getMap<CombatState>('combat');
+
+  useEffect(() => {
+    fetchSettings(campaignShortname).then(settings => setTurnOrder(settings.turnOrder)).catch(() => {});
+  }, [campaignShortname]);
 
   useEffect(() => {
     fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items`, { credentials: 'include' }).then(async (response) => {
@@ -396,14 +403,22 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   };
 
   const startCombat = (kind: ConflictKind) => {
+    // In popcorn, initiative only suggests who goes first; the GM can pick someone else.
     const order = initiativeOrder(tokens.map(t => ({ tokenId: t.id, shortname: t.itemShortname })), kind, shortname => skillRatings(sheets[shortname]));
-    setCombat({ kind, round: 1, order, current: order[0] ?? null });
+    setCombat({ kind, mode: turnOrder, round: 1, order, current: order[0] ?? null, ...(turnOrder === 'popcorn' ? { acted: [] } : {}) });
   };
 
   const presentTokens = () => new Set(tokens.map(t => t.id));
 
   const removeCombatant = (tokenId: string) => {
     if (!combat) return;
+    if (modeOf(combat) === 'popcorn') {
+      // Removing whoever's acting hands the turn to someone still waiting, if anyone is.
+      const next = combat.current === tokenId ? waitingToAct(combat, presentTokens())[0] ?? null : combat.current;
+      const order = combat.order.filter(id => id !== tokenId);
+      setCombat({ ...combat, order, acted: (combat.acted ?? []).filter(id => id !== tokenId), current: next ?? order[0] ?? null });
+      return;
+    }
     // Removing whoever's turn it is passes the turn on first.
     const passed = combat.current === tokenId ? stepTurn(combat, presentTokens(), 1) : combat;
     const order = passed.order.filter(id => id !== tokenId);
@@ -812,6 +827,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         onMove={(tokenId, direction) => combat && setCombat(moveInOrder(combat, tokenId, direction))}
         onRemove={removeCombatant}
         onAdd={tokenId => combat && setCombat({ ...combat, order: [...combat.order, tokenId], current: combat.current ?? tokenId })}
+        canPass={canEdit}
+        onPass={tokenId => combat && setCombat(passTurn(combat, tokenId))}
+        onNextRound={tokenId => combat && setCombat(startNextRound(combat, tokenId))}
+        onUndo={() => combat && setCombat(undoPass(combat))}
+        onSetCurrent={tokenId => combat && setCombat(setCurrent(combat, tokenId))}
       />
       {doc?.status === 'connecting' && <p className='ma-0 mb-1'><small>Connecting to the live scene…</small></p>}
       {doc?.status === 'offline' && <p className='ma-0 mb-1'><small>Live sync is unavailable, so this is the last saved version and can't be edited.</small></p>}
