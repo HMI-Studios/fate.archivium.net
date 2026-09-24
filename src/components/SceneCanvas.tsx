@@ -3,13 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
-import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
+import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type Roll, type RollInvoke } from '../fate/dice';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
 import { useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
+import DiceRoller, { type InvokableAspect } from './DiceRoller';
 
 export type BaseShape = {
   id: string;
@@ -93,6 +95,8 @@ interface Props {
   sceneShortname: string;
   // Whether this viewer runs the scene: may replace the background image and end the scene.
   gm?: boolean;
+  // The viewer's Archivium username, shown on their dice rolls.
+  userName?: string;
 }
 
 // Where temporary aspects kept on a character are stored (the Fate Core sheet's root).
@@ -100,7 +104,7 @@ const SHEET_ROOT = FATE_CORE_LAYOUT.root;
 // Where a scene's aspects are stored on its item (the Fate scene sheet's root).
 const SCENE_ROOT = FATE_SCENE_LAYOUT.root;
 
-export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true }: Props) {
+export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true, userName = '' }: Props) {
   const doc = useSyncedDoc(`scene/${campaignShortname}/${sceneShortname}`);
   const live = doc?.status === 'synced';
   const canEdit = live && !doc.readOnly;
@@ -108,8 +112,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [liveShapes, setLiveShapes] = useState<Shape[]>([]);
   const [savedShapes, setSavedShapes] = useState<Shape[] | null>(null);
   const [liveAspects, setLiveAspects] = useState<SceneAspect[]>([]);
+  const [liveRolls, setLiveRolls] = useState<Roll[]>([]);
   const [savedAspects, setSavedAspects] = useState<SceneAspect[]>([]);
-  const [sheetAspects, setSheetAspects] = useState<{ [shortname: string]: SheetAspect[] }>({});
+  // Sheet data of the characters in the scene, for their temporary aspects, skills and fate points.
+  const [sheets, setSheets] = useState<{ [shortname: string]: Record<string, unknown> }>({});
   const [drawing, setDrawing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -134,6 +140,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const yShapes = ydoc?.getMap<Shape>('shapes');
   const yMeta = ydoc?.getMap<SceneMeta[keyof SceneMeta]>('meta');
   const yAspects = ydoc?.getMap<SceneAspect>('aspects');
+  // Recent dice rolls. Live only: they aren't saved to the scene item.
+  const yRolls = ydoc?.getMap<Roll>('rolls');
 
   useEffect(() => {
     fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items`, { credentials: 'include' }).then(async (response) => {
@@ -165,10 +173,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   }, [campaignShortname, sceneShortname]);
 
   useEffect(() => {
-    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects) return;
+    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yRolls) return;
 
     const updateShapes = () => setLiveShapes(Array.from(yShapes.values()));
     const updateAspects = () => setLiveAspects(Array.from(yAspects.values()));
+    const updateRolls = () => setLiveRolls(Array.from(yRolls.values()).sort((a, b) => b.at - a.at));
     const updateMeta = () => {
       if (!yMeta.has('width')) return;
       setMeta({
@@ -180,9 +189,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     yShapes.observe(updateShapes);
     yMeta.observe(updateMeta);
     yAspects.observe(updateAspects);
+    yRolls.observe(updateRolls);
     updateShapes();
     updateMeta();
     updateAspects();
+    updateRolls();
 
     // Persist our own edits; updates that arrive from the server were saved by
     // whoever made them. The data endpoint merges into obj_data, so this leaves
@@ -212,6 +223,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       yShapes.unobserve(updateShapes);
       yMeta.unobserve(updateMeta);
       yAspects.unobserve(updateAspects);
+      yRolls.unobserve(updateRolls);
       ydoc.off('update', onUpdate);
     };
   }, [ydoc]);
@@ -290,19 +302,25 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   }
   const characterKey = characters.map(c => c.shortname).sort().join(',');
 
-  const loadSheetAspects = (shortnames: string[]) => {
+  const sheetAspects: { [shortname: string]: SheetAspect[] } = Object.fromEntries(Object.entries(sheets).map(([shortname, root]) => {
+    const list = root[TEMPORARY_ASPECTS_KEY];
+    return [shortname, Array.isArray(list) ? list as SheetAspect[] : []];
+  }));
+
+  const setSheetKey = (shortname: string, key: string, value: unknown) => {
+    setSheets(current => ({ ...current, [shortname]: { ...current[shortname], [key]: value } }));
+  };
+
+  const loadSheets = (shortnames: string[]) => {
     shortnames.forEach(shortname => {
       fetchSheetRoot(campaignShortname, shortname, SHEET_ROOT)
-        .then(root => {
-          const list = root[TEMPORARY_ASPECTS_KEY];
-          setSheetAspects(current => ({ ...current, [shortname]: Array.isArray(list) ? list : [] }));
-        })
+        .then(root => setSheets(current => ({ ...current, [shortname]: root })))
         .catch(() => {});
     });
   };
 
   useEffect(() => {
-    if (characterKey) loadSheetAspects(characterKey.split(','));
+    if (characterKey) loadSheets(characterKey.split(','));
   }, [characterKey]);
 
   // Sheets aren't live-synced, so whoever changes a character's sheet aspects from a
@@ -311,7 +329,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   useEffect(() => {
     if (!ySheetStamps) return;
     const onStamp = (event: Y.YMapEvent<number>) => {
-      if (!event.transaction.local) loadSheetAspects(Array.from(event.keysChanged));
+      if (!event.transaction.local) loadSheets(Array.from(event.keysChanged));
     };
     ySheetStamps.observe(onStamp);
     return () => ySheetStamps.unobserve(onStamp);
@@ -321,15 +339,15 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // freshest copy of the sheet. Resolves to whether it was saved.
   const changeSheetAspects = async (shortname: string, update: (list: SheetAspect[]) => SheetAspect[]): Promise<boolean> => {
     if (!canEdit) return false;
-    setSheetAspects(current => ({ ...current, [shortname]: update(current[shortname] ?? []) }));
+    setSheetKey(shortname, TEMPORARY_ASPECTS_KEY, update(sheetAspects[shortname] ?? []));
     try {
       const saved = await updateSheetKey<SheetAspect[]>(campaignShortname, shortname, SHEET_ROOT, TEMPORARY_ASPECTS_KEY, list => update(Array.isArray(list) ? list : []));
-      setSheetAspects(current => ({ ...current, [shortname]: saved }));
+      setSheetKey(shortname, TEMPORARY_ASPECTS_KEY, saved);
       ySheetStamps?.set(shortname, Date.now());
       return true;
     } catch {
       window.alert("Couldn't save the change to the character's sheet.");
-      loadSheetAspects([shortname]);
+      loadSheets([shortname]);
       return false;
     }
   };
@@ -347,6 +365,59 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     ...(sheetAspects[shortname] ?? []).filter(a => a.name).map(a => ({ name: a.name!, freeInvokes: sheetInvokes(a) })),
     ...aspects.filter(a => a.target === shortname),
   ];
+
+  // Everything that can be invoked on a roll: the scene's aspects, and the
+  // temporary aspects on the sheets of characters in the scene.
+  const titleOf = (shortname: string) => characters.find(c => c.shortname === shortname)?.title ?? shortname;
+  const invokableAspects: InvokableAspect[] = [
+    ...aspects.map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.target ? a.targetTitle ?? titleOf(a.target) : 'Scene' })),
+    ...Object.entries(sheetAspects).flatMap(([shortname, list]) => list
+      .map((entry, i) => ({ id: sheetAspectId(shortname, i), name: entry.name ?? '', freeInvokes: sheetInvokes(entry), ownerTitle: titleOf(shortname) }))
+      .filter(a => a.name)),
+  ];
+
+  const addRoll = (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => {
+    if (!canEdit || !ydoc || !yRolls) return;
+    const at = Date.now();
+    const entry: Roll = { ...roll, id: `roll-${at}-${Math.random().toString(36).slice(2, 6)}`, at, by: userName, dice: rollFateDice(), invokes: [] };
+    ydoc.transact(() => {
+      yRolls.set(entry.id, entry);
+      const stale = Array.from(yRolls.values()).sort((a, b) => b.at - a.at).slice(ROLL_LOG_SIZE);
+      stale.forEach(r => yRolls.delete(r.id));
+    });
+  };
+
+  // +2 on a roll: spends one of the aspect's free invokes, or else a fate point
+  // from the rolling character's sheet (a roll with no character is the GM's).
+  const invokeOnRoll = async (rollId: string, aspectId: string) => {
+    const roll = yRolls?.get(rollId);
+    const aspect = invokableAspects.find(a => a.id === aspectId);
+    if (!canEdit || !yRolls || !roll || !aspect) return;
+
+    let paidWith: RollInvoke['paidWith'] = 'fate point';
+    if (aspect.freeInvokes > 0) {
+      paidWith = 'free invoke';
+      const sceneAspect = aspects.find(a => a.id === aspectId);
+      if (sceneAspect?.kind === 'boost' && sceneAspect.freeInvokes <= 1) removeAspect(aspectId);
+      else updateAspect(aspectId, { freeInvokes: aspect.freeInvokes - 1 });
+    } else if (roll.character) {
+      const shortname = roll.character.shortname;
+      const current = fatePoints(sheets[shortname]);
+      if (current <= 0) return;
+      setSheetKey(shortname, 'fatePoints', current - 1);
+      try {
+        const saved = await updateSheetKey<number>(campaignShortname, shortname, SHEET_ROOT, 'fatePoints', fresh => Math.max(0, (typeof fresh === 'number' ? fresh : current) - 1));
+        setSheetKey(shortname, 'fatePoints', saved);
+        ySheetStamps?.set(shortname, Date.now());
+      } catch {
+        window.alert(`Couldn't take a fate point from ${roll.character.title}'s sheet.`);
+        loadSheets([shortname]);
+        return;
+      }
+    }
+    const latest = yRolls.get(rollId) ?? roll;
+    yRolls.set(rollId, { ...latest, invokes: [...latest.invokes, { aspect: aspect.name, paidWith }] });
+  };
 
   const writableAspects = (): Y.Map<SceneAspect> | null => (canEdit && yAspects) ? yAspects : null;
 
@@ -725,7 +796,17 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
             </Layer>
           </Stage>
         </div>
-        <div style={{ flex: '0 1 280px', minWidth: 220 }}>
+        <div className='d-flex flex-col gap-4' style={{ flex: '0 1 280px', minWidth: 220 }}>
+          <DiceRoller
+            rolls={liveRolls.slice(0, 10)}
+            characters={characters}
+            skills={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, skillRatings(sheet)]))}
+            fatePoints={Object.fromEntries(Object.entries(sheets).map(([shortname, sheet]) => [shortname, fatePoints(sheet)]))}
+            aspects={invokableAspects}
+            canRoll={canEdit}
+            onRoll={addRoll}
+            onInvoke={invokeOnRoll}
+          />
           <AspectsPanel
             campaignShortname={campaignShortname}
             aspects={aspects}

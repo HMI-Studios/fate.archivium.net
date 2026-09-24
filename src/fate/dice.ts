@@ -1,0 +1,65 @@
+import { ladderRatings, numberValue, type NumberField, type RatingLadderField, type SheetField } from '../layout/core';
+import { FATE_CORE_LAYOUT } from './coreLayout';
+
+// Fate dice rolls, shared in a scene's live doc (the `rolls` map) so everyone at the
+// table sees them. A roll is 4dF plus a skill rating and a modifier; invoking an
+// aspect afterwards adds +2, paid with a free invoke or a fate point.
+
+export type FateDie = -1 | 0 | 1;
+
+export type RollInvoke = {
+  aspect: string;
+  paidWith: 'free invoke' | 'fate point';
+};
+
+export type Roll = {
+  id: string;
+  at: number;
+  // Who clicked the button (Archivium username).
+  by: string;
+  character?: { shortname: string, title: string };
+  skill?: string;
+  skillRating: number;
+  modifier: number;
+  dice: FateDie[];
+  invokes: RollInvoke[];
+};
+
+// How many rolls a scene keeps.
+export const ROLL_LOG_SIZE = 30;
+
+export function rollFateDice(): FateDie[] {
+  const values = new Uint32Array(4);
+  crypto.getRandomValues(values);
+  return Array.from(values, v => (v % 3) - 1 as FateDie);
+}
+
+export const diceTotal = (dice: FateDie[]) => dice.reduce<number>((sum, die) => sum + die, 0);
+
+export const rollTotal = (roll: Roll) => diceTotal(roll.dice) + roll.skillRating + roll.modifier + 2 * roll.invokes.length;
+
+const LADDER: { [value: number]: string } = {
+  8: 'Legendary', 7: 'Epic', 6: 'Fantastic', 5: 'Superb', 4: 'Great', 3: 'Good',
+  2: 'Fair', 1: 'Average', 0: 'Mediocre', [-1]: 'Poor', [-2]: 'Terrible',
+};
+
+export const signed = (value: number) => value > 0 ? `+${value}` : String(value);
+
+// The ladder name for a result, e.g. "+3 Good"; beyond the ladder, the nearest end.
+export function ladderLabel(value: number): string {
+  const name = LADDER[Math.max(-2, Math.min(8, value))];
+  return `${signed(value)} ${name}`;
+}
+
+/* Reading the Fate Core sheet */
+
+const coreFields: SheetField[] = FATE_CORE_LAYOUT.rows.flatMap(row => row.sections.flatMap(section => section.fields));
+const skillsField = coreFields.find((f): f is RatingLadderField => f.widget === 'ratingLadder' && f.path === 'skills')!;
+const fatePointsField = coreFields.find((f): f is NumberField => f.widget === 'number' && f.path === 'fatePoints')!;
+
+export const FATE_SKILLS: string[] = skillsField.options;
+
+export const skillRatings = (sheet: unknown): { [skill: string]: number } => ladderRatings(skillsField, sheet);
+
+// Fate points on a sheet; a sheet that never set them has its refresh.
+export const fatePoints = (sheet: unknown): number => numberValue(fatePointsField, sheet);

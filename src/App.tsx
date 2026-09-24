@@ -49,7 +49,7 @@ export default function App() {
           <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />
           <Route path=':campaignShortname/maps'>
             <Route path='new' element={<NewItem fixedType='location' />} />
-            <Route path=':mapShortname' element={<Map />} />
+            <Route path=':mapShortname' element={<Map user={user} />} />
           </Route>
         </Route>
       </Route>

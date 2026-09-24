@@ -105,7 +105,7 @@ export default function Room({ user }: Props) {
       {activeScene
         ? <>
           <h2 className='mt-0 mb-1'>{sceneTitle(activeScene)}</h2>
-          <SceneCanvas key={activeScene} campaignShortname={campaignShortname} sceneShortname={activeScene} gm={false} />
+          <SceneCanvas key={activeScene} campaignShortname={campaignShortname} sceneShortname={activeScene} gm={false} userName={user.username} />
         </>
         : <p>Waiting for the GM to show a scene…</p>}
     </>;
@@ -154,7 +154,7 @@ export default function Room({ user }: Props) {
               {sceneTitle(shownScene)}
               {shownScene !== activeScene && <small> (players can't see this)</small>}
             </h2>
-            <SceneCanvas key={shownScene} campaignShortname={campaignShortname} sceneShortname={shownScene} />
+            <SceneCanvas key={shownScene} campaignShortname={campaignShortname} sceneShortname={shownScene} userName={user.username} />
           </>
           : <p>Pick a scene to edit, then show it to the players when it's ready.</p>}
       </div>
