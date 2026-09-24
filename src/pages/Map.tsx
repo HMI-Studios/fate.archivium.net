@@ -56,8 +56,10 @@ export function initY(roomName: string) {
     }
   });
 
-  // Y.Array of generic objects
-  const yShapes: Y.Array<Shape> = ydoc.getArray<Shape>('shapes');
+  // Y.Map keyed by shape id: concurrent inserts/updates/seeds for the same id
+  // converge to one entry (CRDT last-write-wins per key) instead of duplicating,
+  // which a Y.Array of shapes cannot guarantee under concurrent edits.
+  const yShapes: Y.Map<Shape> = ydoc.getMap<Shape>('shapes');
   return { ydoc, provider, yShapes };
 }
 
@@ -85,26 +87,14 @@ export default function Map({ user }: Props) {
   const [tokenCandidates, setTokenCandidates] = useState<MapItem[]>([]);
   const [tokenPick, setTokenPick] = useState('');
 
-  const myLineIndex = useRef<number | null>(null);
+  const myLineId = useRef<string | null>(null);
+  const mapTitleRef = useRef(mapShortname);
 
   const yRef = useRef<{
     ydoc: Y.Doc;
     provider: any;
-    yShapes: Y.Array<Shape>;
+    yShapes: Y.Map<Shape>;
   }>(undefined);
-
-  useEffect(() => {
-    if (!campaignShortname || !mapShortname) return;
-    fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${mapShortname}`, { credentials: 'include' }).then(async (response) => {
-      if (!response.ok) return;
-      const data = await response.json();
-      if (data.map) {
-        setMapWidth(data.map.width ?? 1000);
-        setMapHeight(data.map.height ?? 1000);
-        if (data.map.image_id) setImgVersion(v => v + 1);
-      }
-    });
-  }, [campaignShortname, mapShortname]);
 
   useEffect(() => {
     if (!campaignShortname) return;
@@ -125,13 +115,38 @@ export default function Map({ user }: Props) {
 
   useEffect(() => {
     if (!campaignShortname || !mapShortname) return;
+    let cancelled = false;
 
     const { ydoc, provider, yShapes } = initY(`fate/${campaignShortname}/${mapShortname}`);
     yRef.current = { ydoc, provider, yShapes };
 
-    const update = () => setShapes(yShapes.toArray());
+    const update = () => setShapes(Array.from(yShapes.values()));
     yShapes.observeDeep(update);
     update();
+
+    // Seed the (otherwise-empty) live doc from the last persisted save, so a solo
+    // reload doesn't show a blank canvas and then autosave that blank state over
+    // the real data. Peers connected via WebRTC get a chance to sync first. Since
+    // shapes are keyed by id, even if two fresh clients both seed concurrently the
+    // per-id writes converge (CRDT last-write-wins) instead of duplicating.
+    fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${mapShortname}`, { credentials: 'include' }).then(async (response) => {
+      if (!response.ok || cancelled) return;
+      const data = await response.json();
+      mapTitleRef.current = data.title ?? mapShortname;
+      if (data.map) {
+        setMapWidth(data.map.width ?? 1000);
+        setMapHeight(data.map.height ?? 1000);
+        if (data.map.image_id) setImgVersion(v => v + 1);
+      }
+      const objData = typeof data.obj_data === 'string' ? JSON.parse(data.obj_data) : data.obj_data;
+      const savedShapes: Shape[] = objData?.mapData ?? [];
+      if (!savedShapes.length) return;
+
+      setTimeout(() => {
+        if (cancelled || yShapes.size > 0) return;
+        savedShapes.forEach(shape => yShapes.set(shape.id, shape));
+      }, 800);
+    });
 
     ydoc.on('update', (_, origin) => {
       debounce('map-save', async () => {
@@ -142,9 +157,9 @@ export default function Map({ user }: Props) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            title: mapShortname,
+            title: mapTitleRef.current,
             obj_data: {
-              mapData: yShapes.toArray(),
+              mapData: Array.from(yShapes.values()),
             },
           }),
         });
@@ -152,6 +167,7 @@ export default function Map({ user }: Props) {
     });
 
     return () => {
+      cancelled = true;
       yShapes.unobserveDeep(update);
       provider.destroy();
       ydoc.destroy();
@@ -174,9 +190,7 @@ export default function Map({ user }: Props) {
 
   const deleteSelected = () => {
     if (!selectedId || !yRef.current) return;
-    const idx = shapes.findIndex(s => s.id === selectedId);
-    if (idx < 0) return;
-    yRef.current.yShapes.delete(idx, 1);
+    yRef.current.yShapes.delete(selectedId);
     setSelectedId(null);
   };
 
@@ -193,7 +207,7 @@ export default function Map({ user }: Props) {
       height: 80,
       fill: 'skyblue'
     };
-    yRef.current.yShapes.push([rect]);
+    yRef.current.yShapes.set(rect.id, rect);
   };
 
   const addToken = () => {
@@ -211,23 +225,21 @@ export default function Map({ user }: Props) {
       itemTitle: item.title,
       color: item.item_type === 'pc' ? '#deddca' : item.item_type === 'monster' ? '#ba40f2' : '#e82c17',
     };
-    yRef.current.yShapes.push([token]);
+    yRef.current.yShapes.set(token.id, token);
   };
 
   const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
-    const idx = shapes.findIndex(s => s.id === id);
-    if (idx < 0 || !yRef.current) return;
+    if (!yRef.current) return;
+    const shape = yRef.current.yShapes.get(id);
+    if (!shape) return;
 
-    const shape = shapes[idx];
     const updated: Shape =
       shape.type === 'rect' || shape.type === 'token'
         ? { ...shape, x: node.x(), y: node.y() }
-        : { ...(shape as LineShape) };
+        : shape;
 
-    const yShapes = yRef.current.yShapes;
-    yShapes.delete(idx, 1);
-    yShapes.insert(idx, [updated]);
+    yRef.current.yShapes.set(id, updated);
   };
 
   const startDraw = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -245,34 +257,31 @@ export default function Map({ user }: Props) {
       lineCap: 'round',
       lineJoin: 'round'
     };
-    const yShapes = yRef.current.yShapes;
-    myLineIndex.current = yShapes.length;
-    yShapes.push([newLine]);
+    myLineId.current = newLine.id;
+    yRef.current.yShapes.set(newLine.id, newLine);
   };
 
   const draw = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     if (!drawing || !yRef.current) return;
     const point = e.target.getStage()!.getPointerPosition()!;
-    const idx = myLineIndex.current;
-    if (idx == null) return;
+    const id = myLineId.current;
+    if (id == null) return;
 
     const yShapes = yRef.current.yShapes;
-    const current = yShapes.get(idx) as LineShape;
-
-    if (current.clientID !== yRef.current.ydoc.clientID) return;
+    const current = yShapes.get(id) as LineShape | undefined;
+    if (!current || current.clientID !== yRef.current.ydoc.clientID) return;
 
     const updated: LineShape = {
       ...current,
       points: current.points.concat([point.x, point.y])
     };
 
-    yShapes.delete(idx, 1);
-    yShapes.insert(idx, [updated]);
+    yShapes.set(id, updated);
   };
 
   const endDraw = () => {
     setDrawing(false);
-    myLineIndex.current = null;
+    myLineId.current = null;
   };
 
   const uploadImage = async (file: File) => {
@@ -346,6 +355,7 @@ export default function Map({ user }: Props) {
                   onClick={() => setSelectedId(s.id)}
                   onTap={() => setSelectedId(s.id)}
                   onDragMove={e => handleDragMove(s.id, e)}
+                  onDragEnd={e => handleDragMove(s.id, e)}
                 />
               );
             }
@@ -359,6 +369,7 @@ export default function Map({ user }: Props) {
                   onClick={() => setSelectedId(s.id)}
                   onTap={() => setSelectedId(s.id)}
                   onDragMove={e => handleDragMove(s.id, e)}
+                  onDragEnd={e => handleDragMove(s.id, e)}
                 >
                   <Circle radius={20} fill={s.color} stroke={selected ? 'red' : 'black'} strokeWidth={selected ? 3 : 1} />
                   <Text text={s.itemTitle} y={24} offsetX={20} width={40} align='center' fontSize={12} />
