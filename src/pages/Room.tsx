@@ -151,6 +151,8 @@ export default function Room({ user }: Props) {
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/maps/new`}>New scene</Link>
         </p>
         <p className='ma-0'>
+          <Link className='link link-animated' to={`/campaigns/${campaignShortname}/players`}>Players</Link>
+          {' · '}
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/settings`}>Campaign settings</Link>
         </p>
       </div>
