@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router';
 import Navbar from './components/Navbar';
 import Campaign from './pages/Campaign';
+import CampaignSettings from './pages/CampaignSettings';
 import Character from './pages/Character';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
@@ -45,6 +46,7 @@ export default function App() {
         <Route path='campaigns'>
           <Route path=':campaignShortname' element={<Campaign user={user} />} />
           <Route path=':campaignShortname/play' element={<Room user={user} />} />
+          <Route path=':campaignShortname/settings' element={<CampaignSettings user={user} />} />
           <Route path=':campaignShortname/items/new' element={<NewItem />} />
           <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />
           <Route path=':campaignShortname/maps'>

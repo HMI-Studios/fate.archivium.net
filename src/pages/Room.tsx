@@ -4,10 +4,9 @@ import { ARCHIVIUM_URL } from '../App';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import SceneCanvas from '../components/SceneCanvas';
 import { isLive, useSyncedDoc } from '../sync';
+import { isGameMaster } from '../perms';
 import type { Campaign } from './Campaign';
 
-// Archivium's permission levels (src/api/utils.ts `perms`). Universe admins run the table.
-const PERMS_ADMIN = 4;
 
 type SceneItem = {
   shortname: string;
@@ -74,7 +73,7 @@ export default function Room({ user }: Props) {
     </div>
   </>;
 
-  const isGM = campaign.author_permissions[user.id] >= PERMS_ADMIN;
+  const isGM = isGameMaster(campaign, user);
   const activeScene = liveActiveScene !== undefined ? liveActiveScene : (savedRoom?.activeScene ?? null);
   const sceneTitle = (shortname: string | null) => scenes.find(s => s.shortname === shortname)?.title ?? shortname;
 
@@ -150,6 +149,9 @@ export default function Room({ user }: Props) {
         {activeScene && <button className='mt-2' disabled={!canDrive} onClick={() => showToPlayers(null)}>Hide scene from players</button>}
         <p className='mt-2'>
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/maps/new`}>New scene</Link>
+        </p>
+        <p className='ma-0'>
+          <Link className='link link-animated' to={`/campaigns/${campaignShortname}/settings`}>Campaign settings</Link>
         </p>
       </div>
       <div className='grow-1' style={{ minWidth: 0 }}>
