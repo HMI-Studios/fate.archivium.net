@@ -6,6 +6,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { initiativeOrder, modeOf, moveInOrder, passTurn, setCurrent, startNextRound, stepTurn, undoPass, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
 import { fetchSettings, type TurnOrderMode } from '../fate/settings';
+import { useTable } from '../fate/table';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
@@ -147,7 +148,6 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [liveShapes, setLiveShapes] = useState<Shape[]>([]);
   const [savedShapes, setSavedShapes] = useState<Shape[] | null>(null);
   const [liveAspects, setLiveAspects] = useState<SceneAspect[]>([]);
-  const [liveRolls, setLiveRolls] = useState<Roll[]>([]);
   const [liveCombat, setLiveCombat] = useState<CombatState | null>(null);
   const [savedCombat, setSavedCombat] = useState<CombatState | null>(null);
   const [liveTokenStates, setLiveTokenStates] = useState<{ [tokenId: string]: TokenState }>({});
@@ -182,7 +182,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const yMeta = ydoc?.getMap<SceneMeta[keyof SceneMeta]>('meta');
   const yAspects = ydoc?.getMap<SceneAspect>('aspects');
   // Recent dice rolls. Live only: they aren't saved to the scene item.
-  const yRolls = ydoc?.getMap<Roll>('rolls');
+  // The dice log is campaign-wide, kept in the table doc rather than the scene's.
+  const table = useTable(campaignShortname);
+  const yRolls = table.writableRolls;
   // The conflict's turn order, if one is running (key `state`).
   const yCombat = ydoc?.getMap<CombatState>('combat');
   // Monster tokens' own copies of their changing stats (see fate/tokenState.ts).
@@ -224,11 +226,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   }, [campaignShortname, sceneShortname]);
 
   useEffect(() => {
-    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yRolls || !yCombat || !yTokenStates) return;
+    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates) return;
 
     const updateShapes = () => setLiveShapes(Array.from(yShapes.values()));
     const updateAspects = () => setLiveAspects(Array.from(yAspects.values()));
-    const updateRolls = () => setLiveRolls(Array.from(yRolls.values()).sort((a, b) => b.at - a.at));
     const updateCombat = () => setLiveCombat(yCombat.get('state') ?? null);
     const updateTokenStates = () => setLiveTokenStates(Object.fromEntries(yTokenStates.entries()));
     const updateMeta = () => {
@@ -242,13 +243,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     yShapes.observe(updateShapes);
     yMeta.observe(updateMeta);
     yAspects.observe(updateAspects);
-    yRolls.observe(updateRolls);
     yCombat.observe(updateCombat);
     yTokenStates.observe(updateTokenStates);
     updateShapes();
     updateMeta();
     updateAspects();
-    updateRolls();
     updateCombat();
     updateTokenStates();
 
@@ -293,7 +292,6 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       yShapes.unobserve(updateShapes);
       yMeta.unobserve(updateMeta);
       yAspects.unobserve(updateAspects);
-      yRolls.unobserve(updateRolls);
       yCombat.unobserve(updateCombat);
       yTokenStates.unobserve(updateTokenStates);
       ydoc.off('update', onUpdate);
@@ -564,10 +562,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   ];
 
   const addRoll = (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => {
-    if (!canEdit || !ydoc || !yRolls) return;
+    if (!yRolls) return;
     const at = Date.now();
     const entry: Roll = { ...roll, id: `roll-${at}-${Math.random().toString(36).slice(2, 6)}`, at, by: userName, dice: rollFateDice(), invokes: [] };
-    ydoc.transact(() => {
+    yRolls.doc!.transact(() => {
       yRolls.set(entry.id, entry);
       const stale = Array.from(yRolls.values()).sort((a, b) => b.at - a.at).slice(ROLL_LOG_SIZE);
       stale.forEach(r => yRolls.delete(r.id));
@@ -580,7 +578,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const invokeOnRoll = async (rollId: string, aspectId: string, effect: InvokeEffect) => {
     const roll = yRolls?.get(rollId);
     const aspect = invokableAspects.find(a => a.id === aspectId);
-    if (!canEdit || !yRolls || !roll || !aspect) return;
+    if (!yRolls || !roll || !aspect) return;
 
     let paidWith: RollInvoke['paidWith'] = 'fate point';
     if (aspect.freeInvokes > 0) {
@@ -1061,12 +1059,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         </div>
       </div>
       <DiceRoller
-        rolls={liveRolls.slice(0, 10)}
+        rolls={table.rolls.slice(0, 10)}
         characters={characters}
         skills={Object.fromEntries(characters.map(c => [c.key, skillRatings(actorSheet(c.key))]))}
         fatePoints={Object.fromEntries(characters.filter(c => actorSheet(c.key)).map(c => [c.key, fatePoints(actorSheet(c.key))]))}
         aspects={invokableAspects}
-        canRoll={canEdit}
+        canRoll={Boolean(yRolls)}
         onRoll={addRoll}
         onInvoke={invokeOnRoll}
       />
