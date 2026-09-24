@@ -1,49 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
+import { FieldCaption, SheetRow, SheetSection, fieldStyle, textareaStyle } from '../components/SheetSection';
 import {
   CORE_SKILLS,
+  MAX_STRESS_BOXES,
   hasExtraMildMental,
   hasExtraMildPhysical,
-  ladderLabel,
   mentalStressBoxes,
   normalizeCharacter,
   physicalStressBoxes,
   refresh,
-  skillRating,
   validateCharacter,
   type Consequences,
   type FateCharacter,
   type Stunt,
 } from '../fate/character';
+import { ConsequenceRow, SkillPyramid, StressTrack } from '../fate/SheetWidgets';
 import { debounce } from '../util';
 
-const SKILL_RATINGS = [5, 4, 3, 2, 1, 0];
+// Rows of the skill ladder, as on the Fate Core sheet.
+const SKILL_RATINGS = [5, 4, 3, 2, 1];
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-function StressTrack({ label, boxes, checked, onChange }: {
-  label: string,
-  boxes: number,
-  checked: boolean[],
-  onChange: (checked: boolean[]) => void,
-}) {
-  return <div>
-    <strong>{label}</strong>{' '}
-    {Array.from({ length: boxes }, (_, i) => (
-      <label key={i} style={{ marginRight: 8 }}>
-        <input
-          type='checkbox'
-          checked={checked[i] ?? false}
-          onChange={({ target }) => {
-            const next = Array.from({ length: boxes }, (_, j) => checked[j] ?? false);
-            next[i] = target.checked;
-            onChange(next);
-          }}
-        />
-        {i + 1}
-      </label>
-    ))}
+// The big boxed numbers in the top corner of the paper sheet.
+function StatBox({ label, children }: { label: string, children: ReactNode }) {
+  return <div
+    className='d-flex flex-col align-center justify-center gap-1 pa-2'
+    style={{
+      minWidth: '6rem',
+      border: '1px solid var(--table-border-color)',
+      borderRadius: '0.5rem',
+      background: 'var(--sheet-color)',
+    }}
+  >
+    <span className='lora text-small' style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</span>
+    {children}
   </div>;
 }
 
@@ -104,13 +97,6 @@ export default function Character() {
     update({ aspects });
   };
 
-  const setSkill = (skill: string, rating: number) => {
-    const skills = { ...character.skills };
-    if (rating === 0) delete skills[skill];
-    else skills[skill] = rating;
-    update({ skills });
-  };
-
   const setStunt = (index: number, changes: Partial<Stunt>) => {
     const stunts = [...character.stunts];
     stunts[index] = { ...stunts[index], ...changes };
@@ -123,115 +109,139 @@ export default function Character() {
 
   const problems = validateCharacter(character);
 
-  return <>
-    <Link className='link link-animated' to={`/campaigns/${campaignShortname}`}>← Back to campaign</Link>
-    <h1>{title}</h1>
-    <div>
-      {saveStatus === 'saving' && <span>Saving...</span>}
-      {saveStatus === 'saved' && <span>Saved</span>}
-      {saveStatus === 'error' && <span className='color-error'>Failed to save changes.</span>}
+  return <div className='d-flex flex-col gap-3'>
+    <div className='d-flex justify-between align-center flex-wrap gap-2'>
+      <Link className='link link-animated' to={`/campaigns/${campaignShortname}`}>← Back to campaign</Link>
+      <span className={saveStatus === 'error' ? 'color-error' : undefined} style={{ color: saveStatus === 'error' ? undefined : 'var(--light-text-color)' }}>
+        {saveStatus === 'saving' && 'Saving...'}
+        {saveStatus === 'saved' && 'Saved'}
+        {saveStatus === 'error' && 'Failed to save changes.'}
+      </span>
     </div>
 
-    {problems.length > 0 && <ul>
+    {/* ID band: name and description, with refresh and fate points in the corner. */}
+    <div className='d-flex gap-3 flex-wrap'>
+      <SheetSection title='ID' style={{ flex: '1 1 20rem' }}>
+        <div className='d-flex flex-col'>
+          <span className='lora big-text'>{title}</span>
+          <span className='text-small' style={{ color: 'var(--light-text-color)' }}>Name</span>
+        </div>
+        <div className='d-flex flex-col'>
+          <textarea id='description' style={{ ...textareaStyle, minHeight: '3rem' }} value={character.description} onChange={({ target }) => update({ description: target.value })} />
+          <FieldCaption htmlFor='description'>Description</FieldCaption>
+        </div>
+      </SheetSection>
+      <div className='d-flex gap-2'>
+        <StatBox label='Refresh'>
+          <span className='lora' style={{ fontSize: '2rem', lineHeight: 1 }}>{refresh(character)}</span>
+        </StatBox>
+        <StatBox label='Fate Points'>
+          <input
+            aria-label='Fate points'
+            type='number'
+            min={0}
+            className='center'
+            style={{ width: '4rem', fontSize: '1.5rem' }}
+            value={character.fatePoints ?? refresh(character)}
+            onChange={({ target }) => update({ fatePoints: target.value === '' ? null : Number(target.value) })}
+          />
+        </StatBox>
+      </div>
+    </div>
+
+    {problems.length > 0 && <ul className='my-0'>
       {problems.map(problem => <li key={problem} className='color-error'>{problem}</li>)}
     </ul>}
 
-    <h2>Aspects</h2>
-    <div className='inputGroup'>
-      <label htmlFor='high-concept'>High Concept</label>
-      <input id='high-concept' value={character.highConcept} onChange={({ target }) => update({ highConcept: target.value })} />
-    </div>
-    <div className='inputGroup'>
-      <label htmlFor='trouble'>Trouble</label>
-      <input id='trouble' value={character.trouble} onChange={({ target }) => update({ trouble: target.value })} />
-    </div>
-    {character.aspects.map((aspect, i) => (
-      <div key={i} className='inputGroup'>
-        <label htmlFor={`aspect-${i}`}>Aspect {i + 1}</label>
-        <input id={`aspect-${i}`} value={aspect} onChange={({ target }) => setAspect(i, target.value)} />
-      </div>
-    ))}
-
-    <h2>Skills</h2>
-    {CORE_SKILLS.map(skill => (
-      <div key={skill} className='inputGroup'>
-        <label htmlFor={`skill-${skill}`}>{skill}</label>
-        <select id={`skill-${skill}`} value={skillRating(character, skill)} onChange={({ target }) => setSkill(skill, Number(target.value))}>
-          {SKILL_RATINGS.map(rating => <option key={rating} value={rating}>{ladderLabel(rating)}</option>)}
-        </select>
-      </div>
-    ))}
-
-    <h2>Stunts</h2>
-    <div>Refresh: {refresh(character)}</div>
-    {character.stunts.map((stunt, i) => (
-      <div key={i} style={{ marginTop: 10 }}>
-        <div className='inputGroup'>
-          <input value={stunt.name} placeholder='Stunt name' onChange={({ target }) => setStunt(i, { name: target.value })} />
-          <button type='button' onClick={() => update({ stunts: character.stunts.filter((_, j) => j !== i) })}>Remove</button>
+    <SheetRow>
+      <SheetSection title='Aspects'>
+        <div className='d-flex flex-col'>
+          <input id='high-concept' style={fieldStyle} value={character.highConcept} onChange={({ target }) => update({ highConcept: target.value })} />
+          <FieldCaption htmlFor='high-concept'>High Concept</FieldCaption>
         </div>
-        <div className='inputGroup'>
-          <textarea value={stunt.description} placeholder='What the stunt does' onChange={({ target }) => setStunt(i, { description: target.value })} />
+        <div className='d-flex flex-col'>
+          <input id='trouble' style={fieldStyle} value={character.trouble} onChange={({ target }) => update({ trouble: target.value })} />
+          <FieldCaption htmlFor='trouble'>Trouble</FieldCaption>
         </div>
-      </div>
-    ))}
-    <button type='button' onClick={() => update({ stunts: [...character.stunts, { name: '', description: '' }] })}>Add Stunt</button>
+        {character.aspects.map((aspect, i) => (
+          <input key={i} aria-label={`Aspect ${i + 1}`} style={fieldStyle} value={aspect} onChange={({ target }) => setAspect(i, target.value)} />
+        ))}
+      </SheetSection>
 
-    <h2>Stress</h2>
-    <StressTrack
-      label='Physical'
-      boxes={physicalStressBoxes(character)}
-      checked={character.stress.physical}
-      onChange={physical => update({ stress: { ...character.stress, physical } })}
-    />
-    <StressTrack
-      label='Mental'
-      boxes={mentalStressBoxes(character)}
-      checked={character.stress.mental}
-      onChange={mental => update({ stress: { ...character.stress, mental } })}
-    />
+      <SheetSection title='Skills'>
+        <SkillPyramid
+          skills={character.skills}
+          skillList={CORE_SKILLS}
+          ratings={SKILL_RATINGS}
+          onChange={skills => update({ skills })}
+        />
+      </SheetSection>
+    </SheetRow>
 
-    <h2>Consequences</h2>
-    <div className='inputGroup'>
-      <label htmlFor='consequence-mild'>Mild (2)</label>
-      <input id='consequence-mild' value={character.consequences.mild} onChange={({ target }) => setConsequence('mild', target.value)} />
-    </div>
-    {hasExtraMildPhysical(character) && <div className='inputGroup'>
-      <label htmlFor='consequence-mild-physical'>Mild, physical (2)</label>
-      <input id='consequence-mild-physical' value={character.consequences.mildPhysical} onChange={({ target }) => setConsequence('mildPhysical', target.value)} />
-    </div>}
-    {hasExtraMildMental(character) && <div className='inputGroup'>
-      <label htmlFor='consequence-mild-mental'>Mild, mental (2)</label>
-      <input id='consequence-mild-mental' value={character.consequences.mildMental} onChange={({ target }) => setConsequence('mildMental', target.value)} />
-    </div>}
-    <div className='inputGroup'>
-      <label htmlFor='consequence-moderate'>Moderate (4)</label>
-      <input id='consequence-moderate' value={character.consequences.moderate} onChange={({ target }) => setConsequence('moderate', target.value)} />
-    </div>
-    <div className='inputGroup'>
-      <label htmlFor='consequence-severe'>Severe (6)</label>
-      <input id='consequence-severe' value={character.consequences.severe} onChange={({ target }) => setConsequence('severe', target.value)} />
-    </div>
+    <SheetRow>
+      <SheetSection title='Extras'>
+        <textarea aria-label='Extras' style={{ ...textareaStyle, minHeight: '8rem' }} value={character.extras} onChange={({ target }) => update({ extras: target.value })} />
+      </SheetSection>
 
-    <h2>Fate Points</h2>
-    <div className='inputGroup'>
-      <input
-        aria-label='Fate points'
-        type='number'
-        min={0}
-        value={character.fatePoints ?? refresh(character)}
-        onChange={({ target }) => update({ fatePoints: target.value === '' ? null : Number(target.value) })}
-      />
-    </div>
+      <SheetSection title='Stunts'>
+        {character.stunts.map((stunt, i) => (
+          <div key={i} className='d-flex flex-col gap-1'>
+            <div className='d-flex gap-1'>
+              <input aria-label={`Stunt ${i + 1} name`} placeholder='Stunt name' style={fieldStyle} value={stunt.name} onChange={({ target }) => setStunt(i, { name: target.value })} />
+              <button type='button' onClick={() => update({ stunts: character.stunts.filter((_, j) => j !== i) })}>Remove</button>
+            </div>
+            <textarea aria-label={`Stunt ${i + 1} description`} placeholder='What the stunt does' style={{ ...textareaStyle, minHeight: '3rem' }} value={stunt.description} onChange={({ target }) => setStunt(i, { description: target.value })} />
+          </div>
+        ))}
+        <div>
+          <button type='button' onClick={() => update({ stunts: [...character.stunts, { name: '', description: '' }] })}>Add Stunt</button>
+        </div>
+      </SheetSection>
+    </SheetRow>
 
-    <h2>Extras</h2>
-    <div className='inputGroup'>
-      <textarea aria-label='Extras' value={character.extras} onChange={({ target }) => update({ extras: target.value })} />
-    </div>
+    <SheetRow>
+      <SheetSection title='Stress'>
+        <StressTrack
+          label='Physical'
+          boxes={MAX_STRESS_BOXES}
+          available={physicalStressBoxes(character)}
+          checked={character.stress.physical}
+          unlockHint='Unlocked by a higher Physique'
+          onChange={physical => update({ stress: { ...character.stress, physical } })}
+        />
+        <StressTrack
+          label='Mental'
+          boxes={MAX_STRESS_BOXES}
+          available={mentalStressBoxes(character)}
+          checked={character.stress.mental}
+          unlockHint='Unlocked by a higher Will'
+          onChange={mental => update({ stress: { ...character.stress, mental } })}
+        />
+      </SheetSection>
 
-    <h2>Description</h2>
-    <div className='inputGroup'>
-      <textarea aria-label='Description' value={character.description} onChange={({ target }) => update({ description: target.value })} />
-    </div>
-  </>;
+      <SheetSection title='Consequences'>
+        <ConsequenceRow id='consequence-mild' shifts={2} label='Mild' value={character.consequences.mild} onChange={value => setConsequence('mild', value)} />
+        <ConsequenceRow id='consequence-moderate' shifts={4} label='Moderate' value={character.consequences.moderate} onChange={value => setConsequence('moderate', value)} />
+        <ConsequenceRow id='consequence-severe' shifts={6} label='Severe' value={character.consequences.severe} onChange={value => setConsequence('severe', value)} />
+        <ConsequenceRow
+          id='consequence-mild-physical'
+          shifts={2}
+          label='Mild (physical)'
+          value={character.consequences.mildPhysical}
+          disabled={!hasExtraMildPhysical(character)}
+          hint='Unlocked by Superb (+5) Physique'
+          onChange={value => setConsequence('mildPhysical', value)}
+        />
+        <ConsequenceRow
+          id='consequence-mild-mental'
+          shifts={2}
+          label='Mild (mental)'
+          value={character.consequences.mildMental}
+          disabled={!hasExtraMildMental(character)}
+          hint='Unlocked by Superb (+5) Will'
+          onChange={value => setConsequence('mildMental', value)}
+        />
+      </SheetSection>
+    </SheetRow>
+  </div>;
 }

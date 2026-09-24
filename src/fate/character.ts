@@ -100,6 +100,8 @@ export function skillRating(character: FateCharacter, skill: string): number {
   return character.skills[skill] ?? 0;
 }
 
+export const MAX_STRESS_BOXES = 4;
+
 // Fate Core: 2 stress boxes, 3 at Average/Fair, 4 at Good or better.
 export function stressBoxCount(rating: number): number {
   if (rating >= 3) return 4;
