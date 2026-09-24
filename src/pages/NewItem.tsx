@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ARCHIVIUM_URL } from '../App';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import Breadcrumbs from '../components/Breadcrumbs';
+import { toShortname } from '../util';
 import type { Campaign } from './Campaign';
 
 type NewItem = {
@@ -22,6 +23,8 @@ export default function NewItem({ fixedType }: Props) {
   const itemType = fixedType ?? searchParams.get('type') ?? '';
 
   const [error, setError] = useState<string | null>(null);
+  // Like Archivium, the shortname follows the title until it's edited by hand.
+  const [editedShortname, setEditedShortname] = useState(false);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [newItem, setNewItem] = useState<NewItem>({
     title: '',
@@ -95,10 +98,10 @@ export default function NewItem({ fixedType }: Props) {
     <h1>New {fixedType === 'location' ? 'Map' : 'Item'}</h1>
     <form onSubmit={postItem}>
       <div className='inputGroup'>
-        <input value={newItem.title} onChange={({ target }) => setNewItem({ ...newItem, title: target.value })} placeholder='Title' />
+        <input value={newItem.title} onChange={({ target }) => setNewItem({ ...newItem, title: target.value, ...(editedShortname ? {} : { shortname: toShortname(target.value) }) })} placeholder='Title' />
       </div>
       <div className='inputGroup'>
-        <input value={newItem.shortname} onChange={({ target }) => setNewItem({ ...newItem, shortname: target.value })} placeholder='Shortname' />
+        <input value={newItem.shortname} onChange={({ target }) => { setEditedShortname(true); setNewItem({ ...newItem, shortname: target.value }); }} placeholder='Shortname' />
       </div>
       {!fixedType && <div className='inputGroup'>
         <select value={newItem.item_type} onChange={({ target }) => setNewItem({ ...newItem, item_type: target.value })}>

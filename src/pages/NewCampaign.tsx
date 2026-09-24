@@ -3,6 +3,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { Link, useNavigate } from 'react-router';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { FATE_UNIVERSE_DATA } from '../fate/universeData';
+import { toShortname } from '../util';
 
 type NewCampaign = {
   title: string,
@@ -16,6 +17,8 @@ type NewCampaign = {
 export default function NewCampaign() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  // Like Archivium, the shortname follows the title until it's edited by hand.
+  const [editedShortname, setEditedShortname] = useState(false);
   const [newCampaign, setNewCampaign] = useState<NewCampaign>({
     title: '',
     shortname: '',
@@ -105,10 +108,10 @@ export default function NewCampaign() {
     <h1>New Campaign</h1>
     <form onSubmit={postCampaign}>
       <div className='inputGroup'>
-        <input value={newCampaign.title} onChange={({ target }) => setNewCampaign({ ...newCampaign, title: target.value })} placeholder='Title' />
+        <input value={newCampaign.title} onChange={({ target }) => setNewCampaign({ ...newCampaign, title: target.value, ...(editedShortname ? {} : { shortname: toShortname(target.value) }) })} placeholder='Title' />
       </div>
       <div className='inputGroup'>
-        <input value={newCampaign.shortname} onChange={({ target }) => setNewCampaign({ ...newCampaign, shortname: target.value })} placeholder='Shortname' />
+        <input value={newCampaign.shortname} onChange={({ target }) => { setEditedShortname(true); setNewCampaign({ ...newCampaign, shortname: target.value }); }} placeholder='Shortname' />
       </div>
       <div className='d-flex align-center gap-3'>
         <input type='submit' />
