@@ -121,7 +121,6 @@ export default function Map({ user }: Props) {
   const fittedFor = useRef<string | null>(null);
 
   const myLineId = useRef<string | null>(null);
-  const mapTitleRef = useRef(mapShortname);
 
   const yRef = useRef<{
     ydoc: Y.Doc;
@@ -184,7 +183,6 @@ export default function Map({ user }: Props) {
     fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${mapShortname}`, { credentials: 'include' }).then(async (response) => {
       if (!response.ok || cancelled) return;
       const data = await response.json();
-      mapTitleRef.current = data.title ?? mapShortname;
       if (data.map) {
         setMapWidth(data.map.width ?? 1000);
         setMapHeight(data.map.height ?? 1000);
@@ -200,19 +198,18 @@ export default function Map({ user }: Props) {
       }, 800);
     });
 
+    // The data endpoint merges into obj_data, so this leaves the item's other
+    // Archivium content (body, tabs, etc.) untouched.
     ydoc.on('update', (_, origin) => {
       debounce('map-save', async () => {
-        await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${mapShortname}`, {
+        await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${mapShortname}/data`, {
           credentials: 'include',
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            title: mapTitleRef.current,
-            obj_data: {
-              mapData: Array.from(yShapes.values()),
-            },
+            mapData: Array.from(yShapes.values()),
           }),
         });
       }, 500);
