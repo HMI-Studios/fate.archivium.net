@@ -105,7 +105,7 @@ export default function Room({ user }: Props) {
       {activeScene
         ? <>
           <h2 className='mt-0 mb-1'>{sceneTitle(activeScene)}</h2>
-          <SceneCanvas key={activeScene} campaignShortname={campaignShortname} sceneShortname={activeScene} allowBackground={false} />
+          <SceneCanvas key={activeScene} campaignShortname={campaignShortname} sceneShortname={activeScene} gm={false} />
         </>
         : <p>Waiting for the GM to show a scene…</p>}
     </>;
