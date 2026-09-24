@@ -1,9 +1,8 @@
 import type { Expr, SheetLayout } from '../layout/core';
-import type { TypeConfigs } from '../layout/typeConfig';
 
 // The Fate Core character sheet as a declarative layout. Data is stored on
 // the character's item as obj_data.fate. New campaigns store this layout on
-// the universe (see FATE_UNIVERSE_DATA), so Archivium can render the sheet too.
+// the universe (see fate/universeData.ts), so Archivium can render the sheet too.
 
 export const FATE_CORE_LAYOUT_ID = 'fate-core';
 
@@ -132,13 +131,4 @@ export const FATE_CORE_LAYOUT: SheetLayout = {
   checks: [
     { unless: { gte: [refresh, { const: 1 }] }, message: 'Too many stunts: refresh can\'t go below 1.' },
   ],
-};
-
-// Character-like categories that get the Fate Core sheet.
-export const FATE_SHEET_CATEGORIES = ['pc', 'npc', 'monster'];
-
-// Universe obj_data keys that attach the Fate Core sheet to the character-like types.
-export const FATE_UNIVERSE_DATA: { sheets: { layouts: { [id: string]: SheetLayout } }, typeConfigs: TypeConfigs } = {
-  sheets: { layouts: { [FATE_CORE_LAYOUT_ID]: FATE_CORE_LAYOUT } },
-  typeConfigs: Object.fromEntries(FATE_SHEET_CATEGORIES.map(category => [category, { sheet: FATE_CORE_LAYOUT_ID }])),
 };
