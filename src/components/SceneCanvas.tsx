@@ -3,8 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
-import { parseSheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { fromSceneSheet, parseSheetAspectId, SCENE_ASPECTS_KEY, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
+import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
 import { useSyncedDoc } from '../sync';
 import { debounce } from '../util';
@@ -96,6 +97,8 @@ interface Props {
 
 // Where temporary aspects kept on a character are stored (the Fate Core sheet's root).
 const SHEET_ROOT = FATE_CORE_LAYOUT.root;
+// Where a scene's aspects are stored on its item (the Fate scene sheet's root).
+const SCENE_ROOT = FATE_SCENE_LAYOUT.root;
 
 export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true }: Props) {
   const doc = useSyncedDoc(`scene/${campaignShortname}/${sceneShortname}`);
@@ -154,7 +157,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         }));
       }
       const objData = typeof data.obj_data === 'string' ? JSON.parse(data.obj_data) : data.obj_data;
-      setSavedAspects(objData?.sceneAspects ?? []);
+      // Scenes saved before scene sheets kept their aspects in obj_data.sceneAspects.
+      const sceneSheetAspects = objData?.[SCENE_ROOT]?.[SCENE_ASPECTS_KEY];
+      setSavedAspects(sceneSheetAspects !== undefined ? fromSceneSheet(sceneSheetAspects) : (objData?.sceneAspects ?? []));
       setSavedShapes(objData?.mapData ?? []);
     });
   }, [campaignShortname, sceneShortname]);
@@ -181,10 +186,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
     // Persist our own edits; updates that arrive from the server were saved by
     // whoever made them. The data endpoint merges into obj_data, so this leaves
-    // the item's other Archivium content (body, tabs, etc.) untouched.
+    // the item's other Archivium content (body, tabs, etc.) untouched. Aspects go on
+    // the scene sheet, applied over a fresh copy so its other fields (which can be
+    // edited in Archivium) are kept.
     const onUpdate = (_: Uint8Array, origin: unknown) => {
       if (origin === provider) return;
       debounce(`scene-save-${sceneShortname}`, async () => {
+        const sceneSheet = await fetchSheetRoot(campaignShortname, sceneShortname, SCENE_ROOT).catch(() => null);
         await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${sceneShortname}/data`, {
           credentials: 'include',
           method: 'PUT',
@@ -193,7 +201,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
           },
           body: JSON.stringify({
             mapData: Array.from(yShapes.values()),
-            sceneAspects: Array.from(yAspects.values()),
+            ...(sceneSheet ? { [SCENE_ROOT]: { ...sceneSheet, [SCENE_ASPECTS_KEY]: toSceneSheet(Array.from(yAspects.values())) } } : {}),
           }),
         });
       }, 500);
