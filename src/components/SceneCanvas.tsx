@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
-import { sheetNote, TEMPORARY_ASPECTS_KEY, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { parseSheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fetchSheetRoot, updateSheetKey } from '../fate/sheetData';
 import { useSyncedDoc } from '../sync';
@@ -297,43 +297,109 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     if (characterKey) loadSheetAspects(characterKey.split(','));
   }, [characterKey]);
 
+  // Sheets aren't live-synced, so whoever changes a character's sheet aspects from a
+  // scene bumps a stamp in the scene doc, and everyone else reloads that sheet.
+  const ySheetStamps = ydoc?.getMap<number>('sheetStamps');
+  useEffect(() => {
+    if (!ySheetStamps) return;
+    const onStamp = (event: Y.YMapEvent<number>) => {
+      if (!event.transaction.local) loadSheetAspects(Array.from(event.keysChanged));
+    };
+    ySheetStamps.observe(onStamp);
+    return () => ySheetStamps.unobserve(onStamp);
+  }, [ydoc]);
+
+  // Change a character's sheet aspects: shown straight away, then applied to the
+  // freshest copy of the sheet. Resolves to whether it was saved.
+  const changeSheetAspects = async (shortname: string, update: (list: SheetAspect[]) => SheetAspect[]): Promise<boolean> => {
+    if (!canEdit) return false;
+    setSheetAspects(current => ({ ...current, [shortname]: update(current[shortname] ?? []) }));
+    try {
+      const saved = await updateSheetKey<SheetAspect[]>(campaignShortname, shortname, SHEET_ROOT, TEMPORARY_ASPECTS_KEY, list => update(Array.isArray(list) ? list : []));
+      setSheetAspects(current => ({ ...current, [shortname]: saved }));
+      ySheetStamps?.set(shortname, Date.now());
+      return true;
+    } catch {
+      window.alert("Couldn't save the change to the character's sheet.");
+      loadSheetAspects([shortname]);
+      return false;
+    }
+  };
+
+  // Find a panel row's entry in a (possibly fresher) copy of the list: the same
+  // position if it still holds the same aspect, otherwise the first with its name.
+  const locateSheetAspect = (list: SheetAspect[], shortname: string, index: number) => {
+    const name = sheetAspects[shortname]?.[index]?.name;
+    if (list[index]?.name === name) return index;
+    return list.findIndex(entry => entry.name === name);
+  };
+
+  // Tags beside a character's token: its sheet's temporary aspects, then the scene's.
+  const tokenTags = (shortname: string): { name: string, freeInvokes: number }[] => [
+    ...(sheetAspects[shortname] ?? []).filter(a => a.name).map(a => ({ name: a.name!, freeInvokes: sheetInvokes(a) })),
+    ...aspects.filter(a => a.target === shortname),
+  ];
+
   const writableAspects = (): Y.Map<SceneAspect> | null => (canEdit && yAspects) ? yAspects : null;
 
   const addAspect = (aspect: Omit<SceneAspect, 'id'>) => {
+    // Temporary character aspects go straight onto the sheet so they outlast the scene.
+    if (aspect.kind === 'temporary' && aspect.target) {
+      changeSheetAspects(aspect.target, list => [...list, toSheetAspect(aspect)]);
+      return;
+    }
     const id = `aspect-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     writableAspects()?.set(id, { ...aspect, id });
   };
 
   const updateAspect = (id: string, changes: Partial<SceneAspect>) => {
+    const onSheet = parseSheetAspectId(id);
+    if (onSheet) {
+      changeSheetAspects(onSheet.shortname, list => {
+        const i = locateSheetAspect(list, onSheet.shortname, onSheet.index);
+        if (i < 0) return list;
+        const entry = list[i];
+        const next: SheetAspect = {
+          ...entry,
+          ...(changes.name !== undefined ? { name: changes.name } : {}),
+          ...(changes.freeInvokes !== undefined ? { invokes: toSheetAspect({ name: '', freeInvokes: changes.freeInvokes }).invokes } : {}),
+        };
+        return list.map((e, j) => j === i ? next : e);
+      });
+      return;
+    }
     const target = writableAspects();
     const aspect = target?.get(id);
     if (target && aspect) target.set(id, { ...aspect, ...changes });
   };
 
-  const removeAspect = (id: string) => writableAspects()?.delete(id);
+  const removeAspect = (id: string) => {
+    const onSheet = parseSheetAspectId(id);
+    if (onSheet) {
+      changeSheetAspects(onSheet.shortname, list => {
+        const i = locateSheetAspect(list, onSheet.shortname, onSheet.index);
+        return i < 0 ? list : list.filter((_, j) => j !== i);
+      });
+      return;
+    }
+    writableAspects()?.delete(id);
+  };
 
-  // Move a temporary aspect onto its character's sheet, where it outlasts the scene.
+  // Move a temporary aspect from the scene onto its character's sheet, where it
+  // outlasts the scene. (New temporary aspects go straight to the sheet; this is for
+  // ones added to the scene before that.)
   const keepOnSheet = async (aspect: SceneAspect) => {
     if (!aspect.target) return;
-    const kept: SheetAspect = { name: aspect.name, note: sheetNote(aspect) };
-    await updateSheetKey<SheetAspect[]>(campaignShortname, aspect.target, SHEET_ROOT, TEMPORARY_ASPECTS_KEY, list => [...(Array.isArray(list) ? list : []), kept]);
-    removeAspect(aspect.id);
-    loadSheetAspects([aspect.target]);
+    if (await changeSheetAspects(aspect.target, list => [...list, toSheetAspect(aspect)])) {
+      writableAspects()?.delete(aspect.id);
+    }
   };
 
   const endScene = async () => {
     const kept = aspects.filter(a => a.kind === 'temporary' && a.target);
-    const message = kept.length > 0
-      ? `End the scene? Its aspects will be cleared, and ${kept.length} temporary aspect${kept.length === 1 ? '' : 's'} will move to character sheets.`
-      : 'End the scene? Its aspects will be cleared.';
-    if (!window.confirm(message)) return;
-    for (const aspect of kept) {
-      try {
-        await keepOnSheet(aspect);
-      } catch {
-        window.alert(`Couldn't move "${aspect.name}" to ${aspect.targetTitle ?? aspect.target}'s sheet, so it stays in the scene.`);
-      }
-    }
+    if (!window.confirm('End the scene? Its situation aspects, advantages and boosts will be cleared. Temporary aspects stay on character sheets.')) return;
+    // A temporary aspect that couldn't be moved to its sheet stays in the scene.
+    for (const aspect of kept) await keepOnSheet(aspect);
     const target = writableAspects();
     if (!target || !ydoc) return;
     ydoc.transact(() => {
@@ -628,10 +694,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                       <Circle radius={20} fill={s.color} stroke={selected ? 'red' : 'black'} strokeWidth={selected ? 3 : 1} />
                       <Text text={s.itemTitle} y={24} offsetX={20} width={40} align='center' fontSize={12} />
                       {/* The character's aspects in play, as tags beside the token. */}
-                      {aspects.filter(a => a.target === s.itemShortname).map((a, i) => (
-                        <Label key={a.id} x={26} y={-18 + i * 18} listening={false}>
+                      {tokenTags(s.itemShortname).map((tag, i) => (
+                        <Label key={i} x={26} y={-18 + i * 18} listening={false}>
                           <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={0.5} cornerRadius={3} />
-                          <Text text={a.freeInvokes > 0 ? `${a.name} ${'●'.repeat(a.freeInvokes)}` : a.name} fontStyle='italic' fontSize={11} padding={3} fill='#222' />
+                          <Text text={tag.freeInvokes > 0 ? `${tag.name} ${'●'.repeat(tag.freeInvokes)}` : tag.name} fontStyle='italic' fontSize={11} padding={3} fill='#222' />
                         </Label>
                       ))}
                     </Group>
@@ -662,7 +728,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
             onAdd={addAspect}
             onUpdate={updateAspect}
             onRemove={removeAspect}
-            onKeepOnSheet={aspect => keepOnSheet(aspect).catch(() => window.alert(`Couldn't move "${aspect.name}" to the character's sheet.`))}
+            onKeepOnSheet={keepOnSheet}
             onEndScene={endScene}
           />
         </div>

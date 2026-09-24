@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { ASPECT_KINDS, aspectKind, type AspectKind, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { ASPECT_KINDS, aspectKind, sheetAspectId, sheetInvokes, type AspectKind, type SceneAspect, type SheetAspect } from '../fate/aspects';
 
 export type SceneCharacter = {
   shortname: string;
@@ -19,7 +19,8 @@ interface Props {
   aspects: SceneAspect[];
   // Characters with a token in the scene.
   characters: SceneCharacter[];
-  // Temporary aspects already kept on each character's sheet.
+  // Temporary aspects kept on each character's sheet. They're edited through the same
+  // callbacks, with ids from sheetAspectId().
   sheetAspects: { [shortname: string]: SheetAspect[] };
   canEdit: boolean;
   // Whether the viewer runs the scene (may end it).
@@ -31,8 +32,10 @@ interface Props {
   onEndScene: () => void;
 }
 
-function AspectRow({ aspect, canEdit, onUpdate, onRemove, onKeepOnSheet }: {
+function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKeepOnSheet }: {
   aspect: SceneAspect,
+  // Stored on the character's sheet rather than in the scene.
+  onSheet?: boolean,
   canEdit: boolean,
   onUpdate: Props['onUpdate'],
   onRemove: Props['onRemove'],
@@ -49,18 +52,32 @@ function AspectRow({ aspect, canEdit, onUpdate, onRemove, onKeepOnSheet }: {
   return (
     <li className='d-flex flex-col gap-0' style={{ borderLeft: `3px solid ${KIND_COLORS[aspect.kind]}`, paddingLeft: 6 }}>
       <div className='d-flex align-center gap-1'>
-        {canEdit
-          ? <input
-            value={aspect.name}
-            aria-label='Aspect name'
-            onChange={({ target }) => onUpdate(aspect.id, { name: target.value })}
-            style={{ flex: '1 1 auto', minWidth: 0, fontStyle: 'italic' }}
-          />
-          : <i style={{ flex: '1 1 auto' }}>{aspect.name}</i>}
-        {canEdit && <button title='Remove' aria-label={`Remove ${aspect.name}`} onClick={() => onRemove(aspect.id)}>×</button>}
+        {canEdit && !onSheet && <input
+          value={aspect.name}
+          aria-label='Aspect name'
+          onChange={({ target }) => onUpdate(aspect.id, { name: target.value })}
+          style={{ flex: '1 1 auto', minWidth: 0, fontStyle: 'italic' }}
+        />}
+        {/* Sheets aren't live-synced, so a sheet aspect's name is saved once editing stops. */}
+        {canEdit && onSheet && <input
+          key={aspect.name}
+          defaultValue={aspect.name}
+          aria-label='Aspect name'
+          onBlur={({ target }) => {
+            if (target.value.trim() && target.value !== aspect.name) onUpdate(aspect.id, { name: target.value.trim() });
+          }}
+          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+          style={{ flex: '1 1 auto', minWidth: 0, fontStyle: 'italic' }}
+        />}
+        {!canEdit && <i style={{ flex: '1 1 auto' }}>{aspect.name}</i>}
+        {canEdit && <button
+          title={onSheet ? "Remove from the character's sheet" : 'Remove'}
+          aria-label={`Remove ${aspect.name}`}
+          onClick={() => onRemove(aspect.id)}
+        >×</button>}
       </div>
       <div className='d-flex align-center gap-1 flex-wrap'>
-        <small style={{ color: KIND_COLORS[aspect.kind] }} title={kind.hint}>{kind.label}</small>
+        <small style={{ color: KIND_COLORS[aspect.kind] }} title={kind.hint}>{kind.label}{onSheet && ' · on sheet'}</small>
         <span className='d-flex align-center gap-0' aria-label={`${aspect.freeInvokes} free invokes`}>
           {Array.from({ length: aspect.freeInvokes }, (_, i) => (
             <span
@@ -75,7 +92,7 @@ function AspectRow({ aspect, canEdit, onUpdate, onRemove, onKeepOnSheet }: {
         {canEdit && aspect.kind !== 'boost' && (
           <button title='Add a free invoke' onClick={() => onUpdate(aspect.id, { freeInvokes: aspect.freeInvokes + 1 })}>+ invoke</button>
         )}
-        {canEdit && aspect.kind === 'temporary' && aspect.target && (
+        {canEdit && !onSheet && aspect.kind === 'temporary' && aspect.target && (
           <button title="Move it onto the character's sheet so it outlasts the scene" onClick={() => onKeepOnSheet(aspect)}>Keep on sheet</button>
         )}
       </div>
@@ -100,8 +117,11 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
   const rowProps = { canEdit, onUpdate, onRemove, onKeepOnSheet };
   const sceneAspects = aspects.filter(a => !a.target);
 
+  // Temporary aspects are kept on a character's sheet, so they need a character.
+  const needsCharacter = kind === 'temporary' && !groups.some(c => c.shortname === target);
+
   const add = () => {
-    if (!name.trim()) return;
+    if (!name.trim() || needsCharacter) return;
     const character = groups.find(c => c.shortname === target);
     onAdd({
       name: name.trim(),
@@ -127,7 +147,15 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
 
       {groups.map(character => {
         const attached = aspects.filter(a => a.target === character.shortname);
-        const kept = (sheetAspects[character.shortname] ?? []).filter(a => a.name);
+        const kept: SceneAspect[] = (sheetAspects[character.shortname] ?? [])
+          .map((entry, i) => ({
+            id: sheetAspectId(character.shortname, i),
+            name: entry.name ?? '',
+            kind: 'temporary' as const,
+            freeInvokes: sheetInvokes(entry),
+            target: character.shortname,
+          }))
+          .filter(a => a.name);
         return (
           <div key={character.shortname}>
             <h4 className='ma-0 mb-1'>
@@ -135,13 +163,9 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
             </h4>
             {attached.length === 0 && kept.length === 0 && <small>No aspects in play.</small>}
             <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
+              {kept.map(aspect => <AspectRow key={aspect.id} aspect={aspect} onSheet {...rowProps} />)}
               {attached.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
             </ul>
-            {kept.length > 0 && (
-              <small className='mt-1' style={{ display: 'block' }}>
-                On sheet: {kept.map((a, i) => <span key={i}>{i > 0 && ', '}<i>{a.name}</i>{a.note && ` (${a.note})`}</span>)}
-              </small>
-            )}
           </div>
         );
       })}
@@ -175,12 +199,13 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
               style={{ width: '4em' }}
             />
           </label>
-          <button type='submit' disabled={!name.trim()}>Add aspect</button>
+          {needsCharacter && <small>Temporary aspects go on a character's sheet, so pick a character.</small>}
+          <button type='submit' disabled={!name.trim() || needsCharacter}>Add aspect</button>
         </form>
       )}
 
       {canEdit && gm && aspects.length > 0 && (
-        <button onClick={onEndScene} title='Clear the scene’s aspects; temporary aspects on characters move to their sheets'>End scene</button>
+        <button onClick={onEndScene} title='Clear the situation aspects, advantages and boosts; temporary aspects stay on character sheets'>End scene</button>
       )}
     </div>
   );

@@ -49,8 +49,11 @@ export async function saveSheetChanges(campaign: string, item: string, root: str
   return merged;
 }
 
-// Apply a change to one key of the freshest copy of a sheet, e.g. to append to a list.
-export async function updateSheetKey<T>(campaign: string, item: string, root: string, key: string, update: (current: T | undefined) => T): Promise<void> {
+// Apply a change to one key of the freshest copy of a sheet, e.g. to append to a
+// list. Returns the key's new value.
+export async function updateSheetKey<T>(campaign: string, item: string, root: string, key: string, update: (current: T | undefined) => T): Promise<T> {
   const fresh = await fetchSheetRoot(campaign, item, root);
-  await putSheetRoot(campaign, item, root, { ...fresh, [key]: update(fresh[key] as T | undefined) });
+  const value = update(fresh[key] as T | undefined);
+  await putSheetRoot(campaign, item, root, { ...fresh, [key]: value });
+  return value;
 }
