@@ -3,6 +3,8 @@ import { Route, Routes } from 'react-router';
 import Navbar from './components/Navbar';
 import Campaign from './pages/Campaign';
 import CampaignSettings from './pages/CampaignSettings';
+import JoinCampaign from './pages/JoinCampaign';
+import Players from './pages/Players';
 import Character from './pages/Character';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
@@ -31,11 +33,17 @@ export default function App() {
   </>;
 
   if (!user) {
+    // Archivium's login and sign-up pages send you back to `page` afterwards.
     const pageQuery = new URLSearchParams();
     pageQuery.append('page', window.location.href);
-    return <>
-      To proceed, please go to Archivium and <a className='link link-animated' href={`${ARCHIVIUM_URL}/login?${pageQuery}`}>log in</a>.
-    </>;
+    return <div className='d-flex flex-col gap-2'>
+      <h1 className='mb-0'>Fate on Archivium</h1>
+      <p className='ma-0'>This app uses your Archivium account, and brings you back here once you're signed in.</p>
+      <div className='d-flex gap-3 flex-wrap'>
+        <a className='link link-animated' href={`${ARCHIVIUM_URL}/login?${pageQuery}`}>Log in</a>
+        <a className='link link-animated' href={`${ARCHIVIUM_URL}/signup?${pageQuery}`}>Create an account</a>
+      </div>
+    </div>;
   }
   
   return (
@@ -47,6 +55,8 @@ export default function App() {
           <Route path=':campaignShortname' element={<Campaign user={user} />} />
           <Route path=':campaignShortname/play' element={<Room user={user} />} />
           <Route path=':campaignShortname/settings' element={<CampaignSettings user={user} />} />
+          <Route path=':campaignShortname/players' element={<Players user={user} />} />
+          <Route path=':campaignShortname/join' element={<JoinCampaign user={user} />} />
           <Route path=':campaignShortname/items/new' element={<NewItem />} />
           <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />
           <Route path=':campaignShortname/maps'>
