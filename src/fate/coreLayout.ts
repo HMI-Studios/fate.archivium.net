@@ -1,4 +1,4 @@
-import type { Expr, SheetLayout } from '../layout/core';
+import type { Expr, TabLayout } from '../layout/core';
 
 // The Fate Core character sheet as a declarative layout: an Archivium tab type. Data
 // is stored on the character's item as obj_data.layoutTabs['fate-core']. New
@@ -22,7 +22,7 @@ const stressBoxes = (skill: string): Expr => ({ step: { path: `skills.${skill}` 
 // Superb (+5) Physique / Will grants an extra mild consequence.
 const superb = (skill: string): Expr => ({ gte: [{ path: `skills.${skill}` }, { const: 5 }] });
 
-export const FATE_CORE_LAYOUT: SheetLayout = {
+export const FATE_CORE_LAYOUT: TabLayout = {
   version: 1,
   id: FATE_CORE_LAYOUT_ID,
   title: 'Character Sheet',

@@ -1,4 +1,4 @@
-import type { SheetLayout } from '../layout/core';
+import type { TabLayout } from '../layout/core';
 
 // A scene (a map/location item) as a declarative layout, so scenes can be prepared
 // and read in Archivium: an Archivium tab type. Data is stored on the scene's item as
@@ -11,7 +11,7 @@ import type { SheetLayout } from '../layout/core';
 
 export const FATE_SCENE_LAYOUT_ID = 'fate-scene';
 
-export const FATE_SCENE_LAYOUT: SheetLayout = {
+export const FATE_SCENE_LAYOUT: TabLayout = {
   version: 1,
   id: FATE_SCENE_LAYOUT_ID,
   title: 'Scene',

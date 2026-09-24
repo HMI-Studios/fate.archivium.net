@@ -6,10 +6,10 @@ import { portraitId, PORTRAIT_KEY, type GalleryImage } from '../fate/portrait';
 import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PortraitSlot from '../components/PortraitSlot';
-import { type SheetLayout } from '../layout/core';
+import { type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
-import SheetRenderer from '../layout/SheetRenderer';
-import { SHEET_LAYOUT_CSS } from '../layout/styles';
+import LayoutTabEditor from '../layout/LayoutTabEditor';
+import { LAYOUT_TAB_CSS } from '../layout/styles';
 import { debounce } from '../util';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -21,7 +21,7 @@ function parseObjData(objData: unknown): any {
 export default function Character() {
   const { campaignShortname, characterShortname } = useParams();
   const [title, setTitle] = useState<string | null>(null);
-  const [layout, setLayout] = useState<SheetLayout | null>(null);
+  const [layout, setLayout] = useState<TabLayout | null>(null);
   const [data, setData] = useState<unknown>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -81,7 +81,7 @@ export default function Character() {
   };
 
   return <div className='d-flex flex-col gap-3'>
-    <style>{SHEET_LAYOUT_CSS}</style>
+    <style>{LAYOUT_TAB_CSS}</style>
     <div className='d-flex justify-between align-center flex-wrap gap-2'>
       <Breadcrumbs campaign={campaignShortname} current={title} />
       <div className='d-flex align-center gap-3 flex-wrap'>
@@ -113,7 +113,7 @@ export default function Character() {
         setHasGalleryTab(true);
       }}
     />}
-    <SheetRenderer
+    <LayoutTabEditor
       layout={layout}
       data={data}
       itemTitle={title}

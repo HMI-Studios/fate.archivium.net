@@ -1,4 +1,4 @@
-import { getPath, validateLayout, type SheetLayout } from './core';
+import { getPath, validateLayout, type TabLayout } from './core';
 
 // The parts of Archivium's per-type item config (archivium src/lib/itemTypeConfig.ts)
 // that this app needs. Keep in sync with that file.
@@ -34,10 +34,10 @@ function storedTabTypes(universeObjData: unknown): { [id: string]: unknown } {
 }
 
 // Malformed tab types are left out, so a bad layout can't break pages.
-export function tabTypesOf(universeObjData: unknown): { [id: string]: SheetLayout } {
-  const result: { [id: string]: SheetLayout } = {};
+export function tabTypesOf(universeObjData: unknown): { [id: string]: TabLayout } {
+  const result: { [id: string]: TabLayout } = {};
   for (const [id, layout] of Object.entries(storedTabTypes(universeObjData))) {
-    if (validateLayout(layout).length === 0 && (layout as SheetLayout).id === id) result[id] = layout as SheetLayout;
+    if (validateLayout(layout).length === 0 && (layout as TabLayout).id === id) result[id] = layout as TabLayout;
   }
   return result;
 }

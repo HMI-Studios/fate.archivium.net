@@ -1,4 +1,4 @@
-import { ladderRatings, numberValue, type NumberField, type RatingLadderField, type SheetField } from '../layout/core';
+import { ladderRatings, numberValue, type NumberField, type RatingLadderField, type LayoutField } from '../layout/core';
 import { FATE_CORE_LAYOUT } from './coreLayout';
 
 // Fate dice rolls, shared in a scene's live doc (the `rolls` map) so everyone at the
@@ -64,7 +64,7 @@ export function ladderLabel(value: number): string {
 
 /* Reading the Fate Core sheet */
 
-const coreFields: SheetField[] = FATE_CORE_LAYOUT.rows.flatMap(row => row.sections.flatMap(section => section.fields));
+const coreFields: LayoutField[] = FATE_CORE_LAYOUT.rows.flatMap(row => row.sections.flatMap(section => section.fields));
 const skillsField = coreFields.find((f): f is RatingLadderField => f.widget === 'ratingLadder' && f.path === 'skills')!;
 const fatePointsField = coreFields.find((f): f is NumberField => f.widget === 'number' && f.path === 'fatePoints')!;
 

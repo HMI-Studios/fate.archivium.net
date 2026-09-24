@@ -1,10 +1,10 @@
-import { getPath, isEnabled, setPath, textAt, trackBoxes, type CheckTrackField, type SheetField, type SlotField } from '../layout/core';
+import { getPath, isEnabled, setPath, textAt, trackBoxes, type CheckTrackField, type LayoutField, type SlotField } from '../layout/core';
 import { FATE_CORE_LAYOUT } from './coreLayout';
 
 // Stress tracks and consequences, read from a sheet through the Fate Core layout's
 // own fields so they follow its rules (e.g. extra boxes from a higher Physique).
 
-const coreFields: SheetField[] = FATE_CORE_LAYOUT.rows.flatMap(row => row.sections.flatMap(section => section.fields));
+const coreFields: LayoutField[] = FATE_CORE_LAYOUT.rows.flatMap(row => row.sections.flatMap(section => section.fields));
 const trackFields = coreFields.filter((f): f is CheckTrackField => f.widget === 'checkTrack');
 const slotFields = coreFields.filter((f): f is SlotField => f.widget === 'slot');
 

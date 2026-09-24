@@ -1,20 +1,20 @@
 // Styles for sheet layouts. These are also in Archivium's styles.css
 // (src/static/assets/styles.css, "Sheet layouts" section); this copy is only
 // injected until the Archivium stylesheet we load includes them.
-export const SHEET_LAYOUT_CSS = `
-.sheet-layout {
+export const LAYOUT_TAB_CSS = `
+.tab-layout {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.sheet-layout-row {
+.tab-layout-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.sheet-layout-section {
+.tab-layout-section {
   min-width: min(100%, 6rem);
   border: 1px solid var(--table-border-color);
   border-radius: 0.5rem;
@@ -22,7 +22,7 @@ export const SHEET_LAYOUT_CSS = `
   background-color: var(--sheet-color);
 }
 
-.sheet-layout-title {
+.tab-layout-title {
   margin: 0;
   padding: 0.25rem 0.75rem;
   background-color: var(--menu-color);
@@ -32,41 +32,41 @@ export const SHEET_LAYOUT_CSS = `
   letter-spacing: 0.1em;
 }
 
-.sheet-layout-body {
+.tab-layout-body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem;
 }
 
-.sheet-layout-stat .sheet-layout-title {
+.tab-layout-stat .tab-layout-title {
   font-size: 0.75rem;
   text-align: center;
 }
 
-.sheet-layout-stat .sheet-layout-body {
+.tab-layout-stat .tab-layout-body {
   align-items: center;
   justify-content: center;
 }
 
-.sheet-layout-stat-value {
+.tab-layout-stat-value {
   font-family: 'Lora', serif;
   font-size: 2rem;
   line-height: 1;
 }
 
-.sheet-layout-field {
+.tab-layout-field {
   display: flex;
   flex-direction: column;
 }
 
-.sheet-layout-field input:not([type=checkbox]),
-.sheet-layout-textarea {
+.tab-layout-field input:not([type=checkbox]),
+.tab-layout-textarea {
   width: 100%;
   box-sizing: border-box;
 }
 
-.sheet-layout-textarea {
+.tab-layout-textarea {
   min-height: 3rem;
   padding: 0.5rem;
   resize: vertical;
@@ -77,36 +77,36 @@ export const SHEET_LAYOUT_CSS = `
   border-radius: 0.25rem;
 }
 
-.sheet-layout-text {
+.tab-layout-text {
   min-height: 1.5rem;
   white-space: pre-wrap;
   border-bottom: 1px solid var(--input-border-color);
 }
 
-.sheet-layout-caption {
+.tab-layout-caption {
   font-size: 0.875rem;
   color: var(--light-text-color);
 }
 
-.sheet-layout-line {
+.tab-layout-line {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.sheet-layout-rating {
+.tab-layout-rating {
   min-width: 7.5rem;
   font-family: 'Lora', serif;
 }
 
-.sheet-layout-chips {
+.tab-layout-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
   flex-grow: 1;
 }
 
-.sheet-layout-box {
+.tab-layout-box {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -119,11 +119,11 @@ export const SHEET_LAYOUT_CSS = `
   font-family: 'Lora', serif;
 }
 
-.sheet-layout-locked {
+.tab-layout-locked {
   opacity: 0.35;
 }
 
-.sheet-layout-problems {
+.tab-layout-problems {
   margin: 0;
 }
 `;
