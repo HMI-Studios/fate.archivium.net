@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
-import { layoutForCategory, type SheetLayout } from '../layout/core';
+import { type SheetLayout } from '../layout/core';
+import { layoutForType } from '../layout/typeConfig';
 import SheetRenderer from '../layout/SheetRenderer';
 import { SHEET_LAYOUT_CSS } from '../layout/styles';
 import { debounce } from '../util';
@@ -33,7 +34,7 @@ export default function Character() {
       const campaign = await campaignResponse.json();
       const item = await itemResponse.json();
       // Campaigns created before sheet layouts were stored on the universe fall back to Fate Core.
-      const sheetLayout = layoutForCategory(parseObjData(campaign.obj_data), item.item_type) ?? FATE_CORE_LAYOUT;
+      const sheetLayout = layoutForType(parseObjData(campaign.obj_data), item.item_type) ?? FATE_CORE_LAYOUT;
       setTitle(item.title);
       setLayout(sheetLayout);
       setData(parseObjData(item.obj_data)?.[sheetLayout.root] ?? {});
