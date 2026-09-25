@@ -6,7 +6,9 @@ import { portraitId, PORTRAIT_KEY, type GalleryImage } from '../fate/portrait';
 import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PortraitSlot from '../components/PortraitSlot';
-import { type TabLayout } from '../layout/core';
+import StuntList from '../components/StuntList';
+import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
+import { entryListValues, type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
 import LayoutTabEditor from '../layout/LayoutTabEditor';
 import { LAYOUT_TAB_CSS } from '../layout/styles';
@@ -29,6 +31,15 @@ export default function Character() {
   const [hasGalleryTab, setHasGalleryTab] = useState(false);
   // The sheet data as last loaded or saved, to work out what the user changed.
   const base = useRef<unknown>(null);
+  const [universeObjData, setUniverseObjData] = useState<unknown>(null);
+  // The current text of the campaign stunts this sheet links to, by shortname. Kept
+  // in a ref too, so saves (which run later) copy the latest text onto the sheet.
+  const [liveStunts, setLiveStunts] = useState<{ [shortname: string]: Stunt }>({});
+  const liveStuntsRef = useRef(liveStunts);
+  const updateLiveStunt = (stunt: Stunt) => {
+    liveStuntsRef.current = { ...liveStuntsRef.current, [stunt.shortname]: stunt };
+    setLiveStunts(liveStuntsRef.current);
+  };
 
   useEffect(() => {
     Promise.all([
@@ -48,9 +59,16 @@ export default function Character() {
       setGallery(item.gallery ?? []);
       setHasGalleryTab(parseObjData(item.obj_data)?.gallery !== undefined);
       setLayout(sheetLayout);
+      setUniverseObjData(parseObjData(campaign.obj_data));
       const sheetData = layoutTabData(parseObjData(item.obj_data), sheetLayout.id);
       base.current = sheetData;
       setData(sheetData);
+      const stunts = sheetData[STUNTS_PATH];
+      const linked = new Set((Array.isArray(stunts) ? stunts : []).map(entry => entry && typeof entry === 'object' ? linkOf(entry) : undefined));
+      for (const shortname of linked) {
+        // A stunt that's gone or unreadable just shows the sheet's copy.
+        if (shortname) fetchStunt(campaignShortname!, shortname).then(updateLiveStunt).catch(() => {});
+      }
     });
   }, [campaignShortname, characterShortname]);
 
@@ -69,7 +87,7 @@ export default function Character() {
     setSaveStatus('saving');
     debounce('character-save', async () => {
       try {
-        const saved = await saveSheetChanges(campaignShortname, characterShortname, layout.id, base.current, next);
+        const saved = await saveSheetChanges(campaignShortname, characterShortname, layout.id, base.current, withStuntCopies(next, liveStuntsRef.current));
         base.current = saved;
         // Show what was saved elsewhere too, unless the user has kept typing.
         setData((current: unknown) => current === next ? saved : current);
@@ -120,6 +138,21 @@ export default function Character() {
       onChange={next => {
         setData(next);
         save(next);
+      }}
+      renderField={(field, { id, data, set }) => {
+        // Stunts are picked from, or added to, the campaign's shared stunts.
+        if (field.widget !== 'entryList' || field.path !== STUNTS_PATH || !field.fields.some(f => f.key === 'name')) return undefined;
+        if (!campaignShortname) return undefined;
+        return <StuntList
+          field={field}
+          id={id}
+          campaign={campaignShortname}
+          universeObjData={universeObjData}
+          entries={entryListValues(field, data) as StuntEntry[]}
+          onChange={entries => set(field.path, entries)}
+          live={liveStunts}
+          onLive={updateLiveStunt}
+        />;
       }}
     />
   </div>;
