@@ -7,6 +7,8 @@ import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PortraitSlot from '../components/PortraitSlot';
 import StuntList from '../components/StuntList';
+import TakeHitDialog from '../components/TakeHitDialog';
+import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
 import { entryListValues, type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
@@ -27,6 +29,7 @@ export default function Character() {
   const [data, setData] = useState<unknown>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [takingHit, setTakingHit] = useState(false);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
   const [hasGalleryTab, setHasGalleryTab] = useState(false);
   // The sheet data as last loaded or saved, to work out what the user changed.
@@ -98,6 +101,9 @@ export default function Character() {
     }, 800);
   };
 
+  // The Take a hit button goes under the sheet's last stress track.
+  const lastTrack = layout.rows.flatMap(row => row.sections.flatMap(section => section.fields)).filter(field => field.widget === 'checkTrack').pop();
+
   return <div className='d-flex flex-col gap-3'>
     <style>{LAYOUT_TAB_CSS}</style>
     <div className='d-flex justify-between align-center flex-wrap gap-2'>
@@ -139,7 +145,13 @@ export default function Character() {
         setData(next);
         save(next);
       }}
-      renderField={(field, { id, data, set }) => {
+      renderField={(field, { id, data, set, standard }) => {
+        if (field === lastTrack) return <>
+          {standard}
+          <div>
+            <button type='button' onClick={() => setTakingHit(true)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
+          </div>
+        </>;
         // Stunts are picked from, or added to, the campaign's shared stunts.
         if (field.widget !== 'entryList' || field.path !== STUNTS_PATH || !field.fields.some(f => f.key === 'name')) return undefined;
         if (!campaignShortname) return undefined;
@@ -155,5 +167,16 @@ export default function Character() {
         />;
       }}
     />
+    {takingHit && <TakeHitDialog
+      label={title}
+      stress={stressTracks(data)}
+      slots={consequenceSlots(data)}
+      onApply={hit => {
+        const next = withHit(data, hit).sheet;
+        setData(next);
+        save(next);
+      }}
+      onClose={() => setTakingHit(false)}
+    />}
   </div>;
 }

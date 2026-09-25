@@ -23,8 +23,9 @@ type LayoutTabEditorProps = {
   data: unknown,
   itemTitle: string,
   onChange: (data: unknown) => void,
-  // Lets the page show its own editor for a field; returning undefined keeps the default.
-  renderField?: (field: LayoutField, props: { id: string, data: unknown, set: (path: string, value: unknown) => void }) => ReactNode | undefined,
+  // Lets the page show its own editor for a field (`standard` is the usual one, to
+  // wrap or add to); returning undefined keeps the default.
+  renderField?: (field: LayoutField, props: { id: string, data: unknown, set: (path: string, value: unknown) => void, standard: ReactNode }) => ReactNode | undefined,
 };
 
 type FieldProps<F> = {
@@ -227,9 +228,9 @@ export default function LayoutTabEditor({ layout, data, itemTitle, onChange, ren
             <div className='tab-layout-body'>
               {section.fields.map((field, k) => {
                 const id = `${layout.id}-${i}-${j}-${k}`;
-                const custom = renderField?.(field, { id, data, set });
-                if (custom !== undefined) return <Fragment key={k}>{custom}</Fragment>;
-                return <Field key={k} field={field} id={id} data={data} set={set} itemTitle={itemTitle} />;
+                const standard = <Field field={field} id={id} data={data} set={set} itemTitle={itemTitle} />;
+                const custom = renderField?.(field, { id, data, set, standard });
+                return <Fragment key={k}>{custom !== undefined ? custom : standard}</Fragment>;
               })}
             </div>
           </section>
