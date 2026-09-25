@@ -39,9 +39,15 @@ export function TopBar({ left, right }: { left: ReactNode, right?: ReactNode }) 
   );
 }
 
-// A button in the top bar that opens a panel below it, closed by clicking elsewhere.
-// The panel is rendered outside the bar so it isn't clipped by it.
-export function TopBarMenu({ label, children }: { label: ReactNode, children: (close: () => void) => ReactNode }) {
+// A button that opens a panel, closed by clicking elsewhere or Esc. In the top bar the
+// panel drops down from the bar's left edge (fixed, so the bar doesn't clip it); in a
+// floating toolbar along the bottom it opens upwards, above the button.
+export function MenuButton({ label, placement = 'topbar', title, children }: {
+  label: ReactNode,
+  placement?: 'topbar' | 'above',
+  title?: string,
+  children: (close: () => void) => ReactNode,
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -60,14 +66,17 @@ export function TopBarMenu({ label, children }: { label: ReactNode, children: (c
   }, [open]);
 
   return (
-    <div ref={ref} style={{ display: 'contents' }}>
-      <button aria-expanded={open} onClick={() => setOpen(o => !o)}>{label} ▾</button>
+    <div ref={ref} style={placement === 'above' ? { position: 'relative', display: 'inline-flex' } : { display: 'contents' }}>
+      <button aria-expanded={open} title={title} onClick={() => setOpen(o => !o)}>{label} {placement === 'above' ? '▴' : '▾'}</button>
       {open && (
         <div
           style={{
             ...panelStyle,
-            position: 'fixed', top: `calc(${TOPBAR_HEIGHT} + 0.25rem)`, left: '0.5rem', zIndex: 40,
-            width: 'min(18rem, calc(100vw - 1rem))', maxHeight: `calc(100vh - ${TOPBAR_HEIGHT} - 1rem)`,
+            ...(placement === 'above'
+              ? { position: 'absolute', bottom: 'calc(100% + 0.6rem)', left: '50%', transform: 'translateX(-50%)', maxHeight: '60vh' }
+              : { position: 'fixed', top: `calc(${TOPBAR_HEIGHT} + 0.25rem)`, left: '0.5rem', maxHeight: `calc(100vh - ${TOPBAR_HEIGHT} - 1rem)` }),
+            zIndex: 40,
+            width: 'min(18rem, calc(100vw - 1rem))',
             overflowY: 'auto', padding: '0.75rem', boxSizing: 'border-box',
           }}
         >

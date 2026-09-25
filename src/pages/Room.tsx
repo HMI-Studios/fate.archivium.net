@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { archiviumItemUrl } from '../components/Breadcrumbs';
-import { FullScreen, TopBar, TopBarMenu } from '../components/PlayLayout';
+import { FullScreen, TopBar, MenuButton } from '../components/PlayLayout';
 import SceneCanvas from '../components/SceneCanvas';
 import { isLive, useSyncedDoc } from '../sync';
 import { isGameMaster } from '../perms';
@@ -98,7 +98,7 @@ export default function Room({ user }: Props) {
   const shownScene = isGM ? editingScene ?? activeScene : activeScene;
 
   const scenesMenu = isGM && (
-    <TopBarMenu label='Scenes'>
+    <MenuButton label='Scenes'>
       {close => <div className='d-flex flex-col gap-2'>
         <small>Players see: <b>{activeScene ? sceneTitle(activeScene) : 'nothing'}</b></small>
         <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
@@ -129,7 +129,7 @@ export default function Room({ user }: Props) {
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/settings`}>Campaign settings</Link>
         </div>
       </div>}
-    </TopBarMenu>
+    </MenuButton>
   );
 
   const header = <>

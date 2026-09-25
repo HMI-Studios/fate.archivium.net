@@ -1,6 +1,6 @@
 import Konva from 'konva';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text } from 'react-konva';
+import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text, Transformer } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
 import { CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, parseConsequenceId, parseSheetAspectId, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
@@ -21,7 +21,7 @@ import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
 import CombatTracker, { type CombatEntry } from './CombatTracker';
 import DiceRoller, { type InvokableAspect } from './DiceRoller';
 import Journal from './Journal';
-import { FullScreen, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
+import { FullScreen, MenuButton, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
 import SideDrawer, { DRAWER_WIDTH } from './SideDrawer';
 
 export type BaseShape = {
@@ -61,23 +61,93 @@ export type TokenShape = BaseShape & {
   color: string;
 };
 
-export type Shape = RectShape | LineShape | TokenShape;
+export type TextShape = BaseShape & {
+  type: 'text';
+  x: number;
+  y: number;
+  text: string;
+  fontSize: number;
+  fill: string;
+};
+
+export type Shape = RectShape | LineShape | TokenShape | TextShape;
 
 type Point = { x: number, y: number };
 
 const shapePosition = (shape: Shape): Point => ({ x: shape.x ?? 0, y: shape.y ?? 0 });
 
 // Tools for the map. Pan also moves things; Select drags out a box to select what it touches.
-type Tool = 'pan' | 'select' | 'draw' | 'erase';
+type Tool = 'pan' | 'select' | 'draw' | 'erase' | 'text';
 
 const TOOLS: { tool: Tool, label: string, hint: string }[] = [
   { tool: 'pan', label: 'Pan', hint: 'Drag to move around the map, and to move tokens and shapes. Shift- or Ctrl-click to select several.' },
   { tool: 'select', label: 'Select', hint: 'Drag a box to select everything it touches (hold Shift to add to the selection), then drag any of it to move it all' },
   { tool: 'draw', label: 'Draw', hint: 'Drag to draw on the map' },
   { tool: 'erase', label: 'Erase', hint: 'Drag over drawn lines to erase them' },
+  { tool: 'text', label: 'Text', hint: 'Click the map to write on it, or click text to edit it (double-click text to edit it with any tool)' },
 ];
 
-const TOOL_CURSORS: { [tool in Tool]: string } = { pan: 'grab', select: 'default', draw: 'crosshair', erase: 'cell' };
+const TOOL_CURSORS: { [tool in Tool]: string } = { pan: 'grab', select: 'default', draw: 'crosshair', erase: 'cell', text: 'text' };
+
+// New text is this big on screen at the zoom it's written at.
+const TEXT_SCREEN_SIZE = 20;
+
+// The colour a shape is drawn in, for the ones that can be recoloured.
+function colorOf(shape: Shape): string | null {
+  if (shape.type === 'rect' || shape.type === 'text') return shape.fill;
+  if (shape.type === 'line') return shape.stroke;
+  return null;
+}
+
+function withColor(shape: Shape, color: string): Shape {
+  if (shape.type === 'rect' || shape.type === 'text') return { ...shape, fill: color };
+  if (shape.type === 'line') return { ...shape, stroke: color };
+  return shape;
+}
+
+// Colour inputs only take #rrggbb, but older rectangles have CSS colour names.
+function toHex(color: string): string {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return '#000000';
+  ctx.fillStyle = '#000000';
+  ctx.fillStyle = color;
+  return ctx.fillStyle.startsWith('#') ? ctx.fillStyle : '#000000';
+}
+
+const TOKEN_GROUPS: { type: string, label: string }[] = [
+  { type: 'pc', label: 'Player characters' },
+  { type: 'npc', label: 'NPCs' },
+  { type: 'monster', label: 'Monsters' },
+];
+
+// The list in the "Add token" menu, with a filter once it gets long.
+function TokenPicker({ items, onPick }: { items: MapItem[], onPick: (item: MapItem) => void }) {
+  const [query, setQuery] = useState('');
+  const matching = items.filter(item => item.title.toLowerCase().includes(query.trim().toLowerCase()));
+  return (
+    <div className='d-flex flex-col gap-2'>
+      {items.length > 8 && <input autoFocus placeholder='Find a character' aria-label='Find a character' value={query} onChange={({ target }) => setQuery(target.value)} />}
+      {items.length === 0 && <small>No characters, NPCs or monsters in this campaign yet.</small>}
+      {items.length > 0 && matching.length === 0 && <small>Nobody matches.</small>}
+      {TOKEN_GROUPS.map(group => {
+        const members = matching.filter(item => item.item_type === group.type);
+        if (!members.length) return null;
+        return (
+          <div key={group.type}>
+            <small><b>{group.label}</b></small>
+            <ul className='ma-0 pa-0 d-flex flex-col gap-0' style={{ listStyle: 'none' }}>
+              {members.map(item => (
+                <li key={item.shortname}>
+                  <a className='link link-animated' style={{ cursor: 'pointer' }} onClick={() => onPick(item)}>{item.title}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // The eraser's reach, and how far apart it checks along a fast stroke, in screen pixels.
 const ERASER_RADIUS = 8;
@@ -142,7 +212,14 @@ function scaleShape(shape: Shape, sx: number, sy: number): Shape {
     case 'token':
       return { ...shape, x: shape.x * sx, y: shape.y * sy };
     case 'line':
-      return { ...shape, points: shape.points.map((p, i) => p * (i % 2 === 0 ? sx : sy)) };
+      return {
+        ...shape,
+        ...(shape.x !== undefined ? { x: shape.x * sx } : {}),
+        ...(shape.y !== undefined ? { y: shape.y * sy } : {}),
+        points: shape.points.map((p, i) => p * (i % 2 === 0 ? sx : sy)),
+      };
+    case 'text':
+      return { ...shape, x: shape.x * sx, y: shape.y * sy };
   }
 }
 
@@ -217,7 +294,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [tokenCandidates, setTokenCandidates] = useState<MapItem[]>([]);
   // The campaign's turn order setting, used when a conflict starts.
   const [turnOrder, setTurnOrder] = useState<TurnOrderMode>('initiative');
-  const [tokenPick, setTokenPick] = useState('');
+  // The colour new lines and text are drawn in.
+  const [penColor, setPenColor] = useState('#000000');
+  // Text being written or edited in place, in map coordinates; id is null for new text.
+  const [textEdit, setTextEdit] = useState<{ id: string | null, x: number, y: number, text: string, fontSize: number, fill: string } | null>(null);
 
   const [tool, setTool] = useState<Tool>('pan');
   // The shapes being dragged together, with where each started.
@@ -225,6 +305,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // While erasing, where the pointer last was (map coordinates).
   const eraserAt = useRef<Point | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const transformerRef = useRef<Konva.Transformer | null>(null);
+  // The last text edit saved or cancelled, so Enter and the blur after it save only once.
+  const finishedTextEdit = useRef<object | null>(null);
   const backgroundInput = useRef<HTMLInputElement | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
@@ -826,11 +910,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     target.set(rect.id, rect);
   };
 
-  const addToken = () => {
+  const addToken = (item: MapItem) => {
     const target = writableShapes();
-    if (!target || !ydoc || !tokenPick) return;
-    const item = tokenCandidates.find(i => i.shortname === tokenPick);
-    if (!item) return;
+    if (!target || !ydoc) return;
 
     const center = viewCenter();
     const token: TokenShape = {
@@ -939,7 +1021,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       clientID: ydoc.clientID,
       type: 'line',
       points: [pos.x, pos.y],
-      stroke: 'black',
+      stroke: penColor,
       strokeWidth: 2,
       lineCap: 'round',
       lineJoin: 'round'
@@ -1052,10 +1134,107 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const selection = selectedIds.filter(id => shapes.some(shape => shape.id === id));
   const canMove = canEdit && (activeTool === 'pan' || activeTool === 'select');
 
+  // A single selected rectangle or text gets handles to resize it.
+  const resizable = canMove && selection.length === 1
+    ? shapes.find(shape => shape.id === selection[0] && (shape.type === 'rect' || shape.type === 'text'))
+    : undefined;
+
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    if (!transformer) return;
+    const node = resizable && !textEdit ? stageRef.current?.findOne(`#${resizable.id}`) : undefined;
+    transformer.nodes(node ? [node] : []);
+    transformer.getLayer()?.batchDraw();
+  });
+
+  // Konva resizes by scaling the node; the new size is stored instead, at scale 1.
+  const handleTransformEnd = (id: string, e: Konva.KonvaEventObject<Event>) => {
+    const target = writableShapes();
+    const shape = target?.get(id);
+    if (!target || !shape) return;
+    const node = e.target;
+    const sx = node.scaleX();
+    const sy = node.scaleY();
+    node.scaleX(1);
+    node.scaleY(1);
+    if (shape.type === 'rect') {
+      target.set(id, { ...shape, x: node.x(), y: node.y(), width: Math.max(5, shape.width * sx), height: Math.max(5, shape.height * sy) });
+    } else if (shape.type === 'text') {
+      target.set(id, { ...shape, x: node.x(), y: node.y(), fontSize: Math.max(4, Math.round(shape.fontSize * sy)) });
+    }
+  };
+
+  // The colour picker shows the selection's colour, and recolours it; with nothing
+  // selected it picks the colour for new lines and text.
+  const colorable = selection.map(id => shapes.find(shape => shape.id === id)).filter((shape): shape is Shape => Boolean(shape && colorOf(shape)));
+  const shownColor = colorable.length ? toHex(colorOf(colorable[0])!) : penColor;
+  const recolor = (color: string) => {
+    setPenColor(color);
+    const target = writableShapes();
+    if (!target || !ydoc || !colorable.length) return;
+    ydoc.transact(() => {
+      for (const { id } of colorable) {
+        const current = target.get(id);
+        if (current) target.set(id, withColor(current, color));
+      }
+    });
+  };
+
+  const editText = (shape: TextShape) => {
+    if (!canEdit) return;
+    setSelectedIds([shape.id]);
+    setTextEdit({ id: shape.id, x: shape.x, y: shape.y, text: shape.text, fontSize: shape.fontSize, fill: shape.fill });
+  };
+
+  // Saves the text being edited (clearing all of it deletes it). Takes the edit it was
+  // rendered for, since clicking elsewhere to start new text also ends the old one.
+  const commitText = (edit: NonNullable<typeof textEdit>) => {
+    setTextEdit(current => current === edit ? null : current);
+    if (finishedTextEdit.current === edit) return;
+    finishedTextEdit.current = edit;
+    const target = writableShapes();
+    if (!target || !ydoc) return;
+    const text = edit.text.replace(/\s+$/, '');
+    if (edit.id) {
+      const current = target.get(edit.id);
+      if (current?.type !== 'text') return;
+      if (!text.trim()) target.delete(edit.id);
+      else if (text !== current.text) target.set(edit.id, { ...current, text });
+      return;
+    }
+    if (!text.trim()) return;
+    const shape: TextShape = {
+      id: `text-${Date.now()}`,
+      clientID: ydoc.clientID,
+      type: 'text',
+      x: edit.x,
+      y: edit.y,
+      text,
+      fontSize: edit.fontSize,
+      fill: edit.fill,
+    };
+    target.set(shape.id, shape);
+  };
+
   const pointerDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const stage = e.target.getStage()!;
     const onEmpty = e.target === stage;
     const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+    if (activeTool === 'text') {
+      // The click keeps focus where it is, so the text being written doesn't save on blur.
+      if (textEdit) commitText(textEdit);
+      const clicked = onEmpty ? undefined : shapes.find(shape => shape.id === e.target.id());
+      if (clicked?.type === 'text') {
+        editText(clicked);
+      } else if (onEmpty) {
+        const at = stage.getRelativePointerPosition();
+        setSelectedIds([]);
+        if (at) setTextEdit({ id: null, x: at.x, y: at.y, text: '', fontSize: Math.max(4, Math.round(TEXT_SCREEN_SIZE / camera.scale)), fill: penColor });
+      }
+      // Don't let the canvas take focus from the new text box.
+      e.evt.preventDefault();
+      return;
+    }
     if (activeTool === 'erase') {
       eraserAt.current = null;
       eraseAlong(stage);
@@ -1129,6 +1308,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         }}
       >
         <Stage
+          ref={stageRef}
           width={viewport.width}
           height={viewport.height}
           x={camera.x}
@@ -1168,9 +1348,37 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                     draggable={canMove}
                     stroke={selected ? 'red' : undefined}
                     strokeWidth={selected ? 3 : 0}
+                    strokeScaleEnabled={false}
                     onClick={select}
                     onTap={select}
                     {...dragProps}
+                    onTransformEnd={e => handleTransformEnd(s.id, e)}
+                  />
+                );
+              }
+              if (s.type === 'text') {
+                return (
+                  <Text
+                    key={s.id}
+                    id={s.id}
+                    name='shape'
+                    x={s.x}
+                    y={s.y}
+                    text={s.text}
+                    fontSize={s.fontSize}
+                    fill={s.fill}
+                    // Hidden while it's being edited in place.
+                    visible={textEdit?.id !== s.id}
+                    shadowEnabled={selected}
+                    shadowColor='red'
+                    shadowBlur={6}
+                    draggable={canMove}
+                    onClick={select}
+                    onTap={select}
+                    onDblClick={() => editText(s)}
+                    onDblTap={() => editText(s)}
+                    {...dragProps}
+                    onTransformEnd={e => handleTransformEnd(s.id, e)}
                   />
                 );
               }
@@ -1215,6 +1423,18 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                 />
               );
             })}
+            <Transformer
+              ref={transformerRef}
+              rotateEnabled={false}
+              flipEnabled={false}
+              ignoreStroke
+              // Text keeps its proportions, growing and shrinking its font.
+              keepRatio={resizable?.type === 'text'}
+              enabledAnchors={resizable?.type === 'text'
+                ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
+              boundBoxFunc={(oldBox, newBox) => (Math.abs(newBox.width) < 5 || Math.abs(newBox.height) < 5 ? oldBox : newBox)}
+            />
             {marquee && <Rect
               x={Math.min(marquee.from.x, marquee.to.x)}
               y={Math.min(marquee.from.y, marquee.to.y)}
@@ -1230,6 +1450,44 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
           </Layer>
         </Stage>
       </div>
+
+      {textEdit && (() => {
+        const edit = textEdit;
+        const lines = edit.text.split('\n');
+        return <textarea
+          autoFocus
+          aria-label='Text on the map'
+          value={edit.text}
+          rows={lines.length}
+          onChange={({ target }) => setTextEdit({ ...edit, text: target.value })}
+          onBlur={() => commitText(edit)}
+          onKeyDown={e => {
+            // Enter saves; Shift+Enter starts a new line; Esc cancels.
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitText(edit); }
+            if (e.key === 'Escape') { finishedTextEdit.current = edit; setTextEdit(null); }
+          }}
+          style={{
+            position: 'absolute',
+            left: edit.x * camera.scale + camera.x,
+            top: `calc(${TOPBAR_HEIGHT} + ${edit.y * camera.scale + camera.y}px)`,
+            width: `${Math.max(4, ...lines.map(line => line.length + 1))}ch`,
+            zIndex: 16,
+            margin: 0,
+            padding: 0,
+            border: 'none',
+            outline: '1px dashed #4682B4',
+            background: 'rgb(255 255 255 / 10%)',
+            color: edit.fill,
+            // Konva's default font and line height, so the text doesn't jump when saved.
+            fontFamily: 'Arial',
+            fontSize: edit.fontSize * camera.scale,
+            lineHeight: 1,
+            resize: 'none',
+            overflow: 'hidden',
+            whiteSpace: 'pre',
+          }}
+        />;
+      })()}
 
       {/* The turn order floats over the top of the map, between the drawers' tabs. */}
       <div style={{ position: 'absolute', top: `calc(${TOPBAR_HEIGHT} + 0.5rem)`, ...between, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
@@ -1256,36 +1514,47 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         </div>
       </div>
 
-      {/* Tools float along the bottom of the map. */}
-      <div style={{ position: 'absolute', bottom: '0.75rem', ...between, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+      {/* Zoom sits in the map's bottom-right corner, between the drawers. */}
+      <div className='d-flex flex-col align-center gap-1' style={{ ...panelStyle, position: 'absolute', bottom: '0.75rem', right: between.right, zIndex: between.zIndex, padding: '0.35rem' }}>
+        <button onClick={() => zoomAtCenter(1.25)} aria-label='Zoom in' style={{ width: '2.2rem' }}>+</button>
+        <small style={{ textAlign: 'center' }}>{Math.round(camera.scale * 100)}%</small>
+        <button onClick={() => zoomAtCenter(1 / 1.25)} aria-label='Zoom out' style={{ width: '2.2rem' }}>−</button>
+        <button onClick={() => setCamera(fitCamera(viewport.width, viewport.height, meta.width, meta.height))} title='Fit the whole map in view' style={{ width: '2.2rem', padding: 0 }}>Fit</button>
+      </div>
+
+      {/* Tools float along the bottom of the map, clear of the zoom buttons. */}
+      <div style={{ position: 'absolute', bottom: '0.75rem', ...between, right: `calc(${between.right} + 3.75rem)`, display: canEdit ? 'flex' : 'none', justifyContent: 'center', pointerEvents: 'none' }}>
         <div className='d-flex align-center gap-1 flex-wrap' style={{ ...panelStyle, pointerEvents: 'auto', padding: '0.35rem 0.5rem', justifyContent: 'center' }}>
           {canEdit && <>
             {TOOLS.map(t => <button key={t.tool} onClick={() => setTool(t.tool)} disabled={tool === t.tool} title={t.hint}>{t.label}</button>)}
+            <input
+              type='color'
+              value={shownColor}
+              onChange={({ target }) => recolor(target.value)}
+              aria-label='Colour'
+              title={colorable.length ? 'Colour of what’s selected' : 'Colour for new lines and text'}
+              style={{ width: '2rem', height: '1.6rem', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+            />
             {divider}
-          </>}
-          <button onClick={() => zoomAtCenter(1 / 1.25)} aria-label='Zoom out'>−</button>
-          <span style={{ display: 'inline-block', minWidth: 44, textAlign: 'center' }}>{Math.round(camera.scale * 100)}%</span>
-          <button onClick={() => zoomAtCenter(1.25)} aria-label='Zoom in'>+</button>
-          <button onClick={() => setCamera(fitCamera(viewport.width, viewport.height, meta.width, meta.height))}>Fit</button>
-          {canEdit && <>
-            {divider}
-            <select value={tokenPick} onChange={({ target }) => setTokenPick(target.value)} aria-label='Character to add a token for' style={{ maxWidth: '12rem' }}>
-              <option value=''>Add a token…</option>
-              {tokenCandidates.map(item => (
-                <option key={item.shortname} value={item.shortname}>{item.title}</option>
-              ))}
-            </select>
-            <button onClick={addToken} disabled={!tokenPick}>Add</button>
+            <MenuButton label='Add token' placement='above' title='Put a character, NPC or monster on the map'>
+              {close => <TokenPicker items={tokenCandidates} onPick={item => { addToken(item); close(); }} />}
+            </MenuButton>
             <button onClick={addRect}>Rectangle</button>
-            <button onClick={deleteSelected} disabled={!selection.length} title='Delete what’s selected (Delete key; Esc to deselect)'>
+            {selection.length > 0 && <button onClick={deleteSelected} title='Delete what’s selected (Delete key; Esc to deselect)'>
               Delete{selection.length > 1 ? ` ${selection.length}` : ''}
-            </button>
+            </button>}
           </>}
           {canEdit && gm && <>
             {divider}
-            <button onClick={() => backgroundInput.current?.click()} disabled={uploading}>
-              {uploading ? 'Uploading…' : meta.imageStamp !== null ? 'Change background' : 'Set background'}
-            </button>
+            <MenuButton label={uploading ? 'Uploading…' : 'Background'} placement='above' title="The map's background image">
+              {close => <div className='d-flex flex-col gap-1'>
+                <button disabled={uploading} onClick={() => { close(); backgroundInput.current?.click(); }}>
+                  {meta.imageStamp !== null ? 'Change background image…' : 'Set background image…'}
+                </button>
+                {meta.imageStamp !== null && <button disabled={uploading} onClick={() => { close(); removeBackground(); }}>Remove background</button>}
+              </div>}
+            </MenuButton>
+            {/* Outside the menu, so it's still there when a file is picked. */}
             <input
               ref={backgroundInput}
               type='file'
@@ -1298,7 +1567,6 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                 e.target.value = '';
               }}
             />
-            {meta.imageStamp !== null && <button onClick={removeBackground} disabled={uploading}>Remove background</button>}
           </>}
         </div>
       </div>
