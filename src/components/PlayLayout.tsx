@@ -9,7 +9,9 @@ export const TOPBAR_HEIGHT = '2.75rem';
 // Covers the whole window. Pages using it are routed outside the navbar.
 export function FullScreen({ children }: { children: ReactNode }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'var(--page-color, #444)' }}>
+    // Transparent, so a theme's backdrop on the page shows through. Clipped rather than
+    // hidden, so focusing something in a closed drawer can't scroll the whole room.
+    <div style={{ position: 'fixed', inset: 0, overflow: 'clip' }}>
       {children}
     </div>
   );

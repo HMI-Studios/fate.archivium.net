@@ -10,6 +10,7 @@ import { useTable } from '../fate/table';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
+import { hasBackdrop, useTheme } from '../theme';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { consequenceSlots, stressTracks, takenConsequences, trackKey, withBoxToggled, withHit } from '../fate/stress';
 import { MONSTER_TYPE, TOKEN_STATES_KEY, tokenActorKey, tokenIdOfActor, tokenSheet, type TokenState } from '../fate/tokenState';
@@ -199,7 +200,21 @@ type SceneMeta = {
   width: number;
   height: number;
   imageStamp: number | null;
+  // Where the background image sits, in map coordinates; null for the whole map.
+  // It stops matching the map once the map area is resized.
+  imageRect: MapRect | null;
 };
+
+type MapRect = { x: number, y: number, width: number, height: number };
+
+// The map area's size (and the image's place in it) once it's been resized here, kept
+// on the scene item; Archivium's own map size follows the uploaded image.
+const MAP_AREA_KEY = 'mapArea';
+
+// The smallest the map area can be resized to, in map units.
+const MIN_MAP_SIZE = 100;
+// Room left around everything when fitting the map area to what's on it.
+const FIT_MARGIN = 40;
 
 const TOKEN_CATEGORIES = ['pc', 'npc', 'monster'];
 
@@ -235,6 +250,11 @@ function scaleShape(shape: Shape, sx: number, sy: number): Shape {
     case 'text':
       return { ...shape, x: shape.x * sx, y: shape.y * sy };
   }
+}
+
+function translateShape(shape: Shape, dx: number, dy: number): Shape {
+  if (shape.type === 'line') return { ...shape, x: (shape.x ?? 0) + dx, y: (shape.y ?? 0) + dy };
+  return { ...shape, x: shape.x + dx, y: shape.y + dy };
 }
 
 const TOKEN_RADIUS = 20;
@@ -303,7 +323,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // A selection box being dragged out, in map coordinates.
   const [marquee, setMarquee] = useState<{ from: Point, to: Point, additive: boolean } | null>(null);
 
-  const [meta, setMeta] = useState<SceneMeta>({ width: 1000, height: 1000, imageStamp: null });
+  const [meta, setMeta] = useState<SceneMeta>({ width: 1000, height: 1000, imageStamp: null, imageRect: null });
+  // Whether the GM is dragging the map area's edges.
+  const [resizingMap, setResizingMap] = useState(false);
+  const mapAreaRef = useRef<Konva.Rect | null>(null);
+  const mapTransformerRef = useRef<Konva.Transformer | null>(null);
+  const theme = useTheme();
+  const backdrop = hasBackdrop(theme);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -366,11 +392,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       if (!response.ok) return;
       const data = await response.json();
       const objData = typeof data.obj_data === 'string' ? JSON.parse(data.obj_data) : data.obj_data;
-      if (data.map) {
+      const area = objData?.[MAP_AREA_KEY];
+      if (data.map || area) {
         setMeta(m => ({
-          width: data.map.width ?? m.width,
-          height: data.map.height ?? m.height,
-          imageStamp: objData?.[MAP_IMAGE_HIDDEN_KEY] ? null : data.map.image_id ?? null,
+          width: area?.width ?? data.map?.width ?? m.width,
+          height: area?.height ?? data.map?.height ?? m.height,
+          imageStamp: objData?.[MAP_IMAGE_HIDDEN_KEY] ? null : data.map?.image_id ?? null,
+          imageRect: area?.imageRect ?? null,
         }));
       }
       // Scenes saved before scene sheets kept their aspects in obj_data.sceneAspects.
@@ -395,6 +423,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         width: yMeta.get('width') as number,
         height: yMeta.get('height') as number,
         imageStamp: (yMeta.get('imageStamp') as number | null) ?? null,
+        imageRect: (yMeta.get('imageRect') as MapRect | null) ?? null,
       });
     };
     yShapes.observe(updateShapes);
@@ -420,6 +449,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           mapData: Array.from(yShapes.values()),
           combat: yCombat.get('state') ?? null,
           [TOKEN_STATES_KEY]: Object.fromEntries(yTokenStates.entries()),
+          ...(yMeta.has('width') ? {
+            [MAP_AREA_KEY]: { width: yMeta.get('width'), height: yMeta.get('height'), imageRect: yMeta.get('imageRect') ?? null },
+          } : {}),
         };
         try {
           await updateLayoutTab(
@@ -470,6 +502,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         yMeta.set('width', meta.width);
         yMeta.set('height', meta.height);
         yMeta.set('imageStamp', meta.imageStamp);
+        yMeta.set('imageRect', meta.imageRect);
       }
     });
   }, [canEdit, ydoc, savedShapes]);
@@ -1169,6 +1202,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       yMeta.set('width', newWidth);
       yMeta.set('height', newHeight);
       yMeta.set('imageStamp', Date.now());
+      yMeta.set('imageRect', null);
     });
     await setMapImageHidden(false);
     setUploading(false);
@@ -1189,6 +1223,62 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     yMeta.set('imageStamp', null);
     await setMapImageHidden(true);
   };
+
+  // Makes `rect` (in current map coordinates) the map area. The map's origin is its
+  // top-left corner, so growing it up or left moves everything on it along, and the
+  // view with it, so nothing seems to move.
+  const resizeMapArea = (rect: MapRect) => {
+    if (!canEdit || !gm || !ydoc || !yShapes || !yMeta) return;
+    const width = Math.max(MIN_MAP_SIZE, Math.round(rect.width));
+    const height = Math.max(MIN_MAP_SIZE, Math.round(rect.height));
+    const dx = -Math.round(rect.x);
+    const dy = -Math.round(rect.y);
+    const image = meta.imageRect ?? { x: 0, y: 0, width: meta.width, height: meta.height };
+    fittedFor.current = `${width}x${height}`;
+    ydoc.transact(() => {
+      if (dx || dy) Array.from(yShapes.values()).forEach(shape => yShapes.set(shape.id, translateShape(shape, dx, dy)));
+      yMeta.set('width', width);
+      yMeta.set('height', height);
+      yMeta.set('imageRect', { ...image, x: image.x + dx, y: image.y + dy });
+    });
+    setCamera(cam => ({ ...cam, x: cam.x - dx * cam.scale, y: cam.y - dy * cam.scale }));
+  };
+
+  // Fits the map area around everything on it (and the background image).
+  const fitMapToContents = () => {
+    const layer = mapAreaRef.current?.getLayer();
+    if (!layer) return;
+    const boxes = layer.find('.shape').map(node => node.getClientRect({ relativeTo: layer }));
+    if (bgImage) boxes.push(meta.imageRect ?? { x: 0, y: 0, width: meta.width, height: meta.height });
+    if (boxes.length === 0) return;
+    const left = Math.min(...boxes.map(b => b.x)) - FIT_MARGIN;
+    const top = Math.min(...boxes.map(b => b.y)) - FIT_MARGIN;
+    const right = Math.max(...boxes.map(b => b.x + b.width)) + FIT_MARGIN;
+    const bottom = Math.max(...boxes.map(b => b.y + b.height)) + FIT_MARGIN;
+    resizeMapArea({ x: left, y: top, width: right - left, height: bottom - top });
+  };
+
+  const handleMapTransformEnd = () => {
+    const node = mapAreaRef.current;
+    if (!node) return;
+    const rect = { x: node.x(), y: node.y(), width: node.width() * node.scaleX(), height: node.height() * node.scaleY() };
+    node.setAttrs({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
+    resizeMapArea(rect);
+  };
+
+  useEffect(() => {
+    const transformer = mapTransformerRef.current;
+    if (!transformer) return;
+    transformer.nodes(resizingMap && mapAreaRef.current ? [mapAreaRef.current] : []);
+    transformer.getLayer()?.batchDraw();
+  }, [resizingMap]);
+
+  useEffect(() => {
+    if (!resizingMap) return;
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setResizingMap(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [resizingMap]);
 
   const zoomAt = (point: { x: number, y: number }, factor: number) => {
     setCamera(cam => {
@@ -1215,7 +1305,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     setCamera(cam => ({ ...cam, x: stage.x(), y: stage.y() }));
   };
 
-  const activeTool: Tool = canEdit ? tool : 'pan';
+  const activeTool: Tool = canEdit && !resizingMap ? tool : 'pan';
   // Selected shapes that still exist (someone else may have deleted one).
   const selection = selectedIds.filter(id => shapes.some(shape => shape.id === id));
   const canMove = canEdit && (activeTool === 'pan' || activeTool === 'select');
@@ -1340,6 +1430,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   };
 
   const pointerDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    // While resizing the map area, the canvas only pans (and drags the handles).
+    if (resizingMap) return;
     const stage = e.target.getStage()!;
     const onEmpty = e.target === stage;
     const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
@@ -1430,6 +1522,15 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           cursor: TOOL_CURSORS[activeTool],
         }}
       >
+        {/* With a theme backdrop showing around it, the map area is a pane of its own. */}
+        {backdrop && <div
+          className={theme.glass ? 'glass-pane' : undefined}
+          style={{
+            position: 'absolute', pointerEvents: 'none', padding: 0, boxSizing: 'border-box',
+            left: camera.x, top: camera.y, width: meta.width * camera.scale, height: meta.height * camera.scale,
+            ...(theme.glass ? {} : { background: 'var(--page-color)' }),
+          }}
+        />}
         <Stage
           ref={stageRef}
           width={viewport.width}
@@ -1451,8 +1552,20 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           onTouchEnd={pointerUp}
         >
           <Layer>
-            <Rect x={0} y={0} width={meta.width} height={meta.height} fill='rgba(255, 255, 255, 0.05)' stroke='#888' strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-            {bgImage && <KonvaImage image={bgImage} x={0} y={0} width={meta.width} height={meta.height} listening={false} />}
+            <Rect
+              ref={mapAreaRef}
+              x={0}
+              y={0}
+              width={meta.width}
+              height={meta.height}
+              fill={backdrop ? undefined : 'rgba(255, 255, 255, 0.05)'}
+              stroke={resizingMap ? '#f5c542' : '#888'}
+              strokeWidth={resizingMap ? 2 : 1}
+              strokeScaleEnabled={false}
+              listening={resizingMap}
+              onTransformEnd={handleMapTransformEnd}
+            />
+            {bgImage && <KonvaImage image={bgImage} {...(meta.imageRect ?? { x: 0, y: 0, width: meta.width, height: meta.height })} listening={false} />}
             {/* Draw tokens last so drawings can never cover them. */}
             {[...shapes].sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
               const selected = selection.includes(s.id);
@@ -1561,6 +1674,16 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
                 : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
               boundBoxFunc={(oldBox, newBox) => (Math.abs(newBox.width) < 5 || Math.abs(newBox.height) < 5 ? oldBox : newBox)}
             />
+            <Transformer
+              ref={mapTransformerRef}
+              rotateEnabled={false}
+              flipEnabled={false}
+              ignoreStroke
+              keepRatio={false}
+              borderStroke='#f5c542'
+              anchorStroke='#f5c542'
+              boundBoxFunc={(oldBox, newBox) => (newBox.width < MIN_MAP_SIZE * camera.scale || newBox.height < MIN_MAP_SIZE * camera.scale ? oldBox : newBox)}
+            />
             {marquee && <Rect
               x={Math.min(marquee.from.x, marquee.to.x)}
               y={Math.min(marquee.from.y, marquee.to.y)}
@@ -1649,6 +1772,15 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         <button onClick={() => setCamera(fitCamera(viewport.width, viewport.height, meta.width, meta.height))} title='Fit the whole map in view' style={{ width: '2.2rem', padding: 0 }}>Fit</button>
       </div>
 
+      {resizingMap && <div
+        className='d-flex align-center gap-2'
+        style={{ ...panelStyle, position: 'absolute', bottom: '4.25rem', left: '50%', transform: 'translateX(-50%)', zIndex: 22, padding: '0.35rem 0.6rem', whiteSpace: 'nowrap' }}
+      >
+        <span>Drag the map area's edges to resize it.</span>
+        <button onClick={() => { fitMapToContents(); }}>Fit to contents</button>
+        <button onClick={() => setResizingMap(false)}><b>Done</b></button>
+      </div>}
+
       {/* Tools float along the bottom of the map, clear of the zoom buttons. */}
       <div style={{ position: 'absolute', bottom: '0.75rem', ...between, right: `calc(${between.right} + 3.75rem)`, display: canEdit ? 'flex' : 'none', justifyContent: 'center', pointerEvents: 'none' }}>
         <div className='d-flex align-center gap-1 flex-wrap' style={{ ...panelStyle, pointerEvents: 'auto', padding: '0.35rem 0.5rem', justifyContent: 'center' }}>
@@ -1686,12 +1818,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           </>}
           {canEdit && gm && <>
             {divider}
-            <MenuButton label={uploading ? 'Uploading…' : 'Background'} placement='above' title="The map's background image">
+            <MenuButton label={uploading ? 'Uploading…' : 'Map'} placement='above' title="The map's background image and size">
               {close => <div className='d-flex flex-col gap-1'>
                 <button disabled={uploading} onClick={() => { close(); backgroundInput.current?.click(); }}>
                   {meta.imageStamp !== null ? 'Change background image…' : 'Set background image…'}
                 </button>
                 {meta.imageStamp !== null && <button disabled={uploading} onClick={() => { close(); removeBackground(); }}>Remove background</button>}
+                <button onClick={() => { close(); setSelectedIds([]); setResizingMap(true); }} title="Drag the map area's edges to resize it">Resize map area</button>
+                <button onClick={() => { close(); fitMapToContents(); }} title='Fit the map area around everything on it'>Fit map area to contents</button>
               </div>}
             </MenuButton>
             {/* Outside the menu, so it's still there when a file is picked. */}
