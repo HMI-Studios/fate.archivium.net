@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { glass, GLASS, useTheme } from '../theme';
 
 // The game room's full-screen layout, like D&D Beyond's maps: the canvas fills the
 // window, with a slim bar along the top and everything else in panels over it
@@ -25,13 +26,14 @@ export const panelStyle: CSSProperties = {
 };
 
 export function TopBar({ left, right }: { left: ReactNode, right?: ReactNode }) {
+  const theme = useTheme();
   return (
     <div
       className='d-flex align-center gap-2'
       style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: TOPBAR_HEIGHT, zIndex: 25,
         padding: '0 0.75rem', boxSizing: 'border-box',
-        background: 'var(--menu-color, #666)',
+        ...(theme.glass ? glass('var(--menu-color, #666)', GLASS.bars) : { background: 'var(--menu-color, #666)' }),
         borderBottom: '1px solid var(--menu-border-color, #6e6e6e)',
       }}
     >

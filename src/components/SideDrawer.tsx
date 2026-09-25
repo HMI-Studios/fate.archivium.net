@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { TOPBAR_HEIGHT } from './PlayLayout';
+import { glass, GLASS, useTheme } from '../theme';
 
 // A panel docked to an edge of the game room that slides open and closed over the
 // canvas, with a tab to toggle it that stays visible while it's closed (like D&D
@@ -30,6 +31,7 @@ export const DRAWER_WIDTH = 'min(22rem, 92vw)';
 
 export default function SideDrawer({ title, side = 'right', storageKey, defaultOpen = true, badge, onOpenChange, children }: Props) {
   const [open, setOpen] = useState(() => readOpen(storageKey, defaultOpen));
+  const theme = useTheme();
 
   useEffect(() => {
     try {
@@ -81,7 +83,7 @@ export default function SideDrawer({ title, side = 'right', storageKey, defaultO
           overflowY: 'auto',
           padding: '0.75rem',
           boxSizing: 'border-box',
-          background: 'var(--sheet-color, #333)',
+          ...(theme.glass ? glass('var(--sheet-color, #333)', GLASS.bars) : { background: 'var(--sheet-color, #333)' }),
           [left ? 'borderRight' : 'borderLeft']: '1px solid var(--tab-border-color, #4f4f4f)',
           boxShadow: open ? `${left ? '' : '-'}0.25rem 0 0.75rem rgb(0 0 0 / 25%)` : 'none',
         }}

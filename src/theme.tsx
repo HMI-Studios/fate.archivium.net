@@ -122,3 +122,20 @@ export function ThemeProvider({ user, children }: { user: ThemeUser, children: R
     {children}
   </ThemeContext.Provider>;
 }
+
+// Archivium's .glass-pane look (40% see-through), with the see-through part and colour
+// adjustable: the game room's map needs to be more solid to draw on, and its bars and
+// drawers keep their own colours.
+export function glass(color: string, transparency: number): React.CSSProperties {
+  return {
+    background: `color-mix(in srgb, ${color}, transparent ${transparency}%)`,
+    backdropFilter: 'blur(4px)',
+    WebkitBackdropFilter: 'blur(4px)',
+  };
+}
+
+// How see-through the game room's glass is, in percent.
+export const GLASS = {
+  map: 15,
+  bars: 25,
+};
