@@ -8,9 +8,11 @@ export type InvokableAspect = {
   id: string;
   name: string;
   freeInvokes: number;
-  // Whose it is, for telling the choices apart.
+  // Whose it is (or SCENE_OWNER), for grouping the choices.
   ownerTitle: string;
 };
+
+export const SCENE_OWNER = 'Scene';
 
 interface Props {
   rolls: Roll[];
@@ -50,6 +52,13 @@ function invokeText(invoke: RollInvoke): string {
   return isBonus(invoke)
     ? `${invoke.aspect} +2 (${invoke.paidWith})`
     : `${invoke.aspect}: reroll (${invoke.paidWith})`;
+}
+
+// Aspects grouped by whose they are: the scene's first, then in the order they come.
+function groupByOwner(aspects: InvokableAspect[]): [string, InvokableAspect[]][] {
+  const groups = new Map<string, InvokableAspect[]>();
+  for (const aspect of aspects) groups.set(aspect.ownerTitle, [...groups.get(aspect.ownerTitle) ?? [], aspect]);
+  return [...groups].sort(([a], [b]) => Number(b === SCENE_OWNER) - Number(a === SCENE_OWNER));
 }
 
 function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
@@ -106,10 +115,14 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
         <div className='d-flex flex-col gap-1'>
           <select aria-label='Aspect to invoke' value={pick} onChange={({ target }) => setPick(target.value)}>
             <option value=''>Choose an aspect…</option>
-            {aspects.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.ownerTitle}) · {a.freeInvokes > 0 ? 'free invoke' : 'fate point'}
-              </option>
+            {groupByOwner(aspects).map(([owner, group]) => (
+              <optgroup key={owner} label={owner}>
+                {group.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} · {a.freeInvokes > 0 ? 'free invoke' : 'fate point'}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           {noFatePoint && <small className='color-error'>{who} has no fate points left.</small>}

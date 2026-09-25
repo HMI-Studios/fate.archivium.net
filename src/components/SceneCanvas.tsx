@@ -19,7 +19,7 @@ import { isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
 import CombatTracker, { type CombatEntry } from './CombatTracker';
-import DiceRoller, { type InvokableAspect } from './DiceRoller';
+import DiceRoller, { SCENE_OWNER, type InvokableAspect } from './DiceRoller';
 import Journal from './Journal';
 import { FullScreen, MenuButton, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
 import SideDrawer, { DRAWER_WIDTH } from './SideDrawer';
@@ -764,14 +764,16 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // aspects on the sheets of characters in the scene, and their consequences.
   const titleOf = (key: string) => characters.find(c => c.key === key)?.title ?? key;
   const invokableAspects: InvokableAspect[] = [
-    ...aspects.map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.target ? a.targetTitle ?? titleOf(a.target) : 'Scene' })),
+    // In the order the aspects pane lists them: a character's own aspects, their
+    // consequences, their temporary aspects, then the scene's aspects on them.
+    // Invoking a character's own aspect always costs a fate point.
+    ...Object.values(characterAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: 0, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
+    ...Object.values(consequenceAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
     // (Only PCs' and NPCs' sheets: a monster's sheet aspects belong to no token in particular.)
     ...Object.entries(sheetAspects).filter(([shortname]) => characters.some(c => c.key === shortname)).flatMap(([shortname, list]) => list
       .map((entry, i) => ({ id: sheetAspectId(shortname, i), name: entry.name ?? '', freeInvokes: sheetInvokes(entry), ownerTitle: titleOf(shortname) }))
       .filter(a => a.name)),
-    ...Object.values(consequenceAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
-    // Invoking a character's own aspect always costs a fate point.
-    ...Object.values(characterAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: 0, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
+    ...aspects.map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.target ? a.targetTitle ?? titleOf(a.target) : SCENE_OWNER })),
   ];
 
   const addRoll = (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => {
