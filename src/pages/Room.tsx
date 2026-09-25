@@ -160,6 +160,7 @@ export default function Room({ user }: Props) {
     sceneShortname={shownScene}
     gm={isGM}
     userName={user.username}
+    userId={user.id}
     header={header}
     headerEnd={headerEnd}
   />;

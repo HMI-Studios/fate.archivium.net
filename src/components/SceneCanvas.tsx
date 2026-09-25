@@ -27,6 +27,11 @@ import SideDrawer, { DRAWER_WIDTH } from './SideDrawer';
 export type BaseShape = {
   id: string;
   clientID: number;   // 👈 identify the author
+  // The Archivium user id of whoever made it. Players may only change their own
+  // shapes (and move any token); the GM may change anything. Older shapes have none.
+  author?: number;
+  // Shapes sharing a group are selected, moved and deleted together.
+  group?: string;
 };
 
 export type RectShape = BaseShape & {
@@ -88,6 +93,14 @@ const TOOLS: { tool: Tool, label: string, hint: string }[] = [
 ];
 
 const TOOL_CURSORS: { [tool in Tool]: string } = { pan: 'grab', select: 'default', draw: 'crosshair', erase: 'cell', text: 'text' };
+
+// Line thicknesses, in map units.
+const LINE_WIDTHS: { width: number, label: string }[] = [
+  { width: 2, label: 'Thin' },
+  { width: 5, label: 'Medium' },
+  { width: 10, label: 'Thick' },
+  { width: 20, label: 'Heavy' },
+];
 
 // New text is this big on screen at the zoom it's written at.
 const TEXT_SCREEN_SIZE = 20;
@@ -256,6 +269,8 @@ interface Props {
   gm?: boolean;
   // The viewer's Archivium username, shown on their dice rolls.
   userName?: string;
+  // The viewer's Archivium user id, recorded on the shapes they make.
+  userId?: number;
   // The start of the top bar: where you are and how to get back.
   header: ReactNode;
   // The end of the top bar, before the scene's own status.
@@ -267,7 +282,7 @@ interface Props {
 const SHEET_TAB = FATE_CORE_LAYOUT.id;
 const SCENE_TAB = FATE_SCENE_LAYOUT.id;
 
-export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true, userName = '', header, headerEnd }: Props) {
+export default function SceneCanvas({ campaignShortname, sceneShortname, gm = false, userName = '', userId, header, headerEnd }: Props) {
   const doc = useSyncedDoc(`scene/${campaignShortname}/${sceneShortname}`);
   const live = isLive(doc?.status);
   const canEdit = live && !doc.readOnly;
@@ -296,6 +311,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [turnOrder, setTurnOrder] = useState<TurnOrderMode>('initiative');
   // The colour new lines and text are drawn in.
   const [penColor, setPenColor] = useState('#000000');
+  const [penWidth, setPenWidth] = useState(LINE_WIDTHS[0].width);
   // Text being written or edited in place, in map coordinates; id is null for new text.
   const [textEdit, setTextEdit] = useState<{ id: string | null, x: number, y: number, text: string, fontSize: number, fill: string } | null>(null);
 
@@ -493,6 +509,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length) deleteSelected();
       if (e.key === 'Escape') setSelectedIds([]);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        if (e.shiftKey) ungroupSelection();
+        else groupSelection();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -872,6 +893,17 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   const writableShapes = (): Y.Map<Shape> | null => (canEdit && yShapes) ? yShapes : null;
 
+  // Whether the viewer may select and change a shape. Everything else on the map is
+  // just part of the picture to them. (The live doc itself doesn't check this.)
+  const mayEdit = (shape: Shape) => canEdit && (gm || shape.type === 'token' || (userId !== undefined && shape.author === userId));
+
+  // Shapes with the rest of their groups (as far as the viewer may change them).
+  const withGroups = (ids: string[]) => {
+    const groups = new Set(ids.map(id => shapes.find(shape => shape.id === id)?.group).filter(Boolean));
+    const members = shapes.filter(shape => shape.group && groups.has(shape.group) && mayEdit(shape)).map(shape => shape.id);
+    return [...new Set([...ids, ...members])];
+  };
+
   const deleteSelected = () => {
     const target = writableShapes();
     if (!selection.length || !target || !ydoc) return;
@@ -900,6 +932,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const rect: RectShape = {
       id: `rect-${Date.now()}`,
       clientID: ydoc.clientID,
+      author: userId,
       type: 'rect',
       x: center.x - 50,
       y: center.y - 40,
@@ -918,6 +951,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const token: TokenShape = {
       id: `token-${Date.now()}`,
       clientID: ydoc.clientID,
+      author: userId,
       type: 'token',
       x: center.x,
       y: center.y,
@@ -934,8 +968,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const handleDragStart = (id: string) => {
     const target = writableShapes();
     if (!target) return;
-    const ids = selection.includes(id) ? selection : [id];
-    if (!selection.includes(id)) setSelectedIds([id]);
+    const ids = selection.includes(id) ? selection : withGroups([id]);
+    if (!selection.includes(id)) setSelectedIds(ids);
     dragGroup.current = Object.fromEntries(ids.flatMap(sid => {
       const shape = target.get(sid);
       return shape ? [[sid, shapePosition(shape)]] : [];
@@ -964,10 +998,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // Shift/Ctrl/Cmd-click adds to or takes from the selection.
   const selectShape = (id: string, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     if (!canEdit || activeTool === 'erase') return;
+    const members = withGroups([id]);
     if (e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey) {
-      setSelectedIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
+      setSelectedIds(ids => members.every(m => ids.includes(m)) ? ids.filter(i => !members.includes(i)) : [...new Set([...ids, ...members])]);
     } else {
-      setSelectedIds([id]);
+      setSelectedIds(members);
     }
   };
 
@@ -985,7 +1020,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const reach = ERASER_RADIUS / camera.scale;
     const hits = new Set<string>();
     for (const shape of shapes) {
-      if (shape.type === 'line' && samples.some(p => lineNear(shape, p, reach))) hits.add(shape.id);
+      if (shape.type === 'line' && mayEdit(shape) && samples.some(p => lineNear(shape, p, reach))) hits.add(shape.id);
     }
     if (!hits.size) return;
     ydoc.transact(() => hits.forEach(id => target.delete(id)));
@@ -1005,7 +1040,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       height: Math.abs(box.to.y - box.from.y) * camera.scale,
     };
     if (rect.width < 3 && rect.height < 3) return;
-    const hits = stage.find('.shape').filter(node => Konva.Util.haveIntersection(rect, node.getClientRect())).map(node => node.id());
+    const hits = withGroups(stage.find('.shape')
+      .filter(node => Konva.Util.haveIntersection(rect, node.getClientRect()))
+      .map(node => node.id())
+      .filter(id => { const shape = shapes.find(sh => sh.id === id); return shape && mayEdit(shape); }));
     setSelectedIds(ids => box.additive ? [...new Set([...ids, ...hits])] : hits);
   };
 
@@ -1019,10 +1057,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const newLine: LineShape = {
       id: `line-${Date.now()}`,
       clientID: ydoc.clientID,
+      author: userId,
       type: 'line',
       points: [pos.x, pos.y],
       stroke: penColor,
-      strokeWidth: 2,
+      strokeWidth: penWidth,
       lineCap: 'round',
       lineJoin: 'round'
     };
@@ -1166,7 +1205,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   // The colour picker shows the selection's colour, and recolours it; with nothing
   // selected it picks the colour for new lines and text.
-  const colorable = selection.map(id => shapes.find(shape => shape.id === id)).filter((shape): shape is Shape => Boolean(shape && colorOf(shape)));
+  const selectedShapes = selection.map(id => shapes.find(shape => shape.id === id)).filter((shape): shape is Shape => Boolean(shape));
+  const colorable = selectedShapes.filter(shape => colorOf(shape));
   const shownColor = colorable.length ? toHex(colorOf(colorable[0])!) : penColor;
   const recolor = (color: string) => {
     setPenColor(color);
@@ -1180,8 +1220,43 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     });
   };
 
+  // The thickness picker works like the colour picker, for lines.
+  const selectedLines = selectedShapes.filter((shape): shape is LineShape => shape.type === 'line');
+  const shownWidth = selectedLines.length ? selectedLines[0].strokeWidth : penWidth;
+  const rewidth = (width: number) => {
+    setPenWidth(width);
+    const target = writableShapes();
+    if (!target || !ydoc || !selectedLines.length) return;
+    ydoc.transact(() => {
+      for (const { id } of selectedLines) {
+        const current = target.get(id);
+        if (current?.type === 'line') target.set(id, { ...current, strokeWidth: width });
+      }
+    });
+  };
+
+  // Grouping the selection puts everything in it in one new group (merging any
+  // groups it had); ungrouping takes everything selected out of its group.
+  const selectedGroups = new Set(selectedShapes.map(shape => shape.group).filter(Boolean));
+  const canGroup = canEdit && selectedShapes.length >= 2 && !(selectedGroups.size === 1 && selectedShapes.every(shape => shape.group));
+  const canUngroup = canEdit && selectedGroups.size > 0;
+  const setGroup = (group: string | null) => {
+    const target = writableShapes();
+    if (!target || !ydoc) return;
+    ydoc.transact(() => {
+      for (const { id } of selectedShapes) {
+        const current = target.get(id);
+        if (!current) continue;
+        const { group: _old, ...rest } = current;
+        target.set(id, (group ? { ...rest, group } : rest) as Shape);
+      }
+    });
+  };
+  const groupSelection = () => { if (canGroup) setGroup(`group-${Date.now()}`); };
+  const ungroupSelection = () => { if (canUngroup) setGroup(null); };
+
   const editText = (shape: TextShape) => {
-    if (!canEdit) return;
+    if (!mayEdit(shape)) return;
     setSelectedIds([shape.id]);
     setTextEdit({ id: shape.id, x: shape.x, y: shape.y, text: shape.text, fontSize: shape.fontSize, fill: shape.fill });
   };
@@ -1206,6 +1281,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     const shape: TextShape = {
       id: `text-${Date.now()}`,
       clientID: ydoc.clientID,
+      author: userId,
       type: 'text',
       x: edit.x,
       y: edit.y,
@@ -1224,9 +1300,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       // The click keeps focus where it is, so the text being written doesn't save on blur.
       if (textEdit) commitText(textEdit);
       const clicked = onEmpty ? undefined : shapes.find(shape => shape.id === e.target.id());
-      if (clicked?.type === 'text') {
+      if (clicked?.type === 'text' && mayEdit(clicked)) {
         editText(clicked);
-      } else if (onEmpty) {
+      } else if (!clicked || !mayEdit(clicked)) {
         const at = stage.getRelativePointerPosition();
         setSelectedIds([]);
         if (at) setTextEdit({ id: null, x: at.x, y: at.y, text: '', fontSize: Math.max(4, Math.round(TEXT_SCREEN_SIZE / camera.scale)), fill: penColor });
@@ -1333,7 +1409,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
             {/* Draw tokens last so drawings can never cover them. */}
             {[...shapes].sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
               const selected = selection.includes(s.id);
-              const select = canEdit ? (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectShape(s.id, e) : undefined;
+              const editable = mayEdit(s);
+              const select = editable ? (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectShape(s.id, e) : undefined;
+              const movable = canMove && editable;
               const dragProps = {
                 onDragStart: () => handleDragStart(s.id),
                 onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => handleDragMove(s.id, e),
@@ -1345,7 +1423,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                     key={s.id}
                     {...s}
                     name='shape'
-                    draggable={canMove}
+                    draggable={movable}
                     stroke={selected ? 'red' : undefined}
                     strokeWidth={selected ? 3 : 0}
                     strokeScaleEnabled={false}
@@ -1372,7 +1450,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                     shadowEnabled={selected}
                     shadowColor='red'
                     shadowBlur={6}
-                    draggable={canMove}
+                    draggable={movable}
                     onClick={select}
                     onTap={select}
                     onDblClick={() => editText(s)}
@@ -1390,7 +1468,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                     name='shape'
                     x={s.x}
                     y={s.y}
-                    draggable={canMove}
+                    draggable={movable}
                     onClick={select}
                     onTap={select}
                     {...dragProps}
@@ -1413,10 +1491,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                   key={s.id}
                   {...s}
                   name='shape line'
-                  hitStrokeWidth={12}
+                  // Easy to click even when thin, and all the way across when thick.
+                  hitStrokeWidth={Math.max(12, s.strokeWidth)}
                   stroke={selected ? 'red' : s.stroke}
                   // Only selected lines move, so a drag across the map pans instead of catching one.
-                  draggable={canMove && selected}
+                  draggable={movable && selected}
                   onClick={select}
                   onTap={select}
                   {...dragProps}
@@ -1535,11 +1614,24 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
               title={colorable.length ? 'Colour of what’s selected' : 'Colour for new lines and text'}
               style={{ width: '2rem', height: '1.6rem', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
             />
+            {(activeTool === 'draw' || selectedLines.length > 0) && (
+              <select
+                aria-label='Line thickness'
+                title={selectedLines.length ? 'Thickness of the selected lines' : 'Thickness for new lines'}
+                value={shownWidth}
+                onChange={({ target }) => rewidth(Number(target.value))}
+              >
+                {LINE_WIDTHS.map(w => <option key={w.width} value={w.width}>{w.label}</option>)}
+                {!LINE_WIDTHS.some(w => w.width === shownWidth) && <option value={shownWidth}>{shownWidth}</option>}
+              </select>
+            )}
             {divider}
             <MenuButton label='Add token' placement='above' title='Put a character, NPC or monster on the map'>
               {close => <TokenPicker items={tokenCandidates} onPick={item => { addToken(item); close(); }} />}
             </MenuButton>
             <button onClick={addRect}>Rectangle</button>
+            {canGroup && <button onClick={groupSelection} title='Group these so they select and move together (Ctrl+G)'>Group</button>}
+            {canUngroup && <button onClick={ungroupSelection} title='Ungroup (Ctrl+Shift+G)'>Ungroup</button>}
             {selection.length > 0 && <button onClick={deleteSelected} title='Delete what’s selected (Delete key; Esc to deselect)'>
               Delete{selection.length > 1 ? ` ${selection.length}` : ''}
             </button>}
