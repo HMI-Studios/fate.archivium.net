@@ -39,7 +39,7 @@ export default function App() {
     // Archivium's login and sign-up pages send you back to `page` afterwards.
     const pageQuery = new URLSearchParams();
     pageQuery.append('page', window.location.href);
-    return <div className='d-flex flex-col gap-2'>
+    return <div className='d-flex flex-col gap-2 my-1 mx-4'>
       <h1 className='mb-0'>Fate on Archivium</h1>
       {joining && <p className='ma-0'>
         You've been sent a link to join the campaign <b>{joining}</b>. Log in, or create an
