@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import TakeHitDialog, { type Hit } from './TakeHitDialog';
 import { CONFLICT_LABELS, modeOf, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
 import type { Consequence, ConsequenceSlot, StressTrack } from '../fate/stress';
 
@@ -12,6 +14,8 @@ export type CombatEntry = {
   // Monster tokens have no sheet of their own to write consequences on, so their
   // slots are edited on the card.
   consequenceSlots?: ConsequenceSlot[];
+  // Every consequence slot they have, for taking a hit.
+  slots: ConsequenceSlot[];
 };
 
 interface Props {
@@ -23,6 +27,7 @@ interface Props {
   canMarkStress: boolean;
   onToggleStress: (tokenId: string, path: string, index: number) => void;
   onSetConsequence: (tokenId: string, path: string, text: string) => void;
+  onTakeHit: (tokenId: string, hit: Hit) => void;
   onStart: (kind: ConflictKind) => void;
   onStep: (direction: 1 | -1) => void;
   onEnd: () => void;
@@ -78,7 +83,10 @@ function StressRow({ track, canMark, onToggle }: { track: StressTrack, canMark: 
   );
 }
 
-export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onSetConsequence, onStart, onStep, onEnd, onMove, onRemove, onAdd, canPass, onPass, onNextRound, onUndo, onSetCurrent }: Props) {
+export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onSetConsequence, onTakeHit, onStart, onStep, onEnd, onMove, onRemove, onAdd, canPass, onPass, onNextRound, onUndo, onSetCurrent }: Props) {
+  // The combatant whose hit is being worked out, if any.
+  const [hitting, setHitting] = useState<string | null>(null);
+
   if (!state) {
     if (!canRun || entries.length === 0) return null;
     return (
@@ -160,6 +168,9 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
                   <StressRow key={track.path} track={track} canMark={canMarkStress} onToggle={index => onToggleStress(id, track.path, index)} />
                 ))}
               </div>
+              {canMarkStress && (
+                <button className='mt-1' onClick={() => setHitting(id)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
+              )}
               {entry.consequences.length > 0 && (
                 <ul className='ma-0 pa-0 mt-1 w-100' style={{ listStyle: 'none' }}>
                   {entry.consequences.map(c => (
@@ -215,6 +226,14 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
           ))}
         </div>
       )}
+      {hitting && byId.has(hitting) && <TakeHitDialog
+        label={byId.get(hitting)!.label}
+        stress={byId.get(hitting)!.stress}
+        slots={byId.get(hitting)!.slots}
+        kind={state.kind}
+        onApply={hit => onTakeHit(hitting, hit)}
+        onClose={() => setHitting(null)}
+      />}
     </section>
   );
 }

@@ -11,7 +11,7 @@ import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
-import { consequenceSlots, stressTracks, takenConsequences, trackKey, withBoxToggled } from '../fate/stress';
+import { consequenceSlots, stressTracks, takenConsequences, trackKey, withBoxToggled, withHit } from '../fate/stress';
 import { MONSTER_TYPE, TOKEN_STATES_KEY, tokenActorKey, tokenIdOfActor, tokenSheet, type TokenState } from '../fate/tokenState';
 import { getPath, setPath } from '../layout/core';
 import { fetchLayoutTab, layoutTabData, updateLayoutTab, updateSheetKey } from '../fate/sheetData';
@@ -19,6 +19,7 @@ import { isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
 import CombatTracker, { type CombatEntry } from './CombatTracker';
+import type { Hit } from './TakeHitDialog';
 import DiceRoller, { SCENE_OWNER, type InvokableAspect } from './DiceRoller';
 import Journal from './Journal';
 import { FullScreen, MenuButton, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
@@ -578,6 +579,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       portraitUrl: portraitUrl(token.itemShortname),
       stress: stressTracks(view),
       consequences: takenConsequences(view),
+      slots: consequenceSlots(view),
       ...(isMonster(token) ? { consequenceSlots: consequenceSlots(view) } : {}),
     };
   });
@@ -601,6 +603,33 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       ySheetStamps?.set(shortname, Date.now());
     } catch {
       window.alert(`Couldn't save ${token.itemTitle}'s stress.`);
+      loadSheets([shortname]);
+    }
+  };
+
+  // A hit worked out on a combat card: a monster token marks its own copy; anyone
+  // else marks their sheet, applied to its freshest copy.
+  const takeHit = async (tokenId: string, hit: Hit) => {
+    const token = tokens.find(t => t.id === tokenId);
+    if (!canEdit || !token) return;
+    if (isMonster(token)) {
+      setTokenState(token.id, state => {
+        const { sheet, keys } = withHit(tokenView(token), hit);
+        return { ...state, ...Object.fromEntries(keys.map(key => [key, getPath(sheet, key)])) };
+      });
+      return;
+    }
+    const shortname = token.itemShortname;
+    const { sheet, keys } = withHit(sheets[shortname], hit);
+    keys.forEach(key => setSheetKey(shortname, key, getPath(sheet, key)));
+    try {
+      for (const key of keys) {
+        const saved = await updateSheetKey(campaignShortname, shortname, SHEET_TAB, key, fresh => getPath(withHit({ [key]: fresh }, hit).sheet, key));
+        setSheetKey(shortname, key, saved);
+      }
+      ySheetStamps?.set(shortname, Date.now());
+    } catch {
+      window.alert(`Couldn't save the hit on ${token.itemTitle}'s sheet.`);
       loadSheets([shortname]);
     }
   };
@@ -1596,6 +1625,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             canMarkStress={canEdit}
             onToggleStress={toggleStress}
             onSetConsequence={setConsequence}
+            onTakeHit={takeHit}
             onStart={startCombat}
             onStep={direction => combat && setCombat(stepTurn(combat, presentTokens(), direction))}
             onEnd={() => setCombat(null)}

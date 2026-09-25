@@ -51,3 +51,25 @@ export function withBoxToggled(sheet: unknown, path: string, index: number): unk
   boxes[index] = !boxes[index];
   return getPath(setPath(sheet ?? {}, path, boxes), key);
 }
+
+// Marks a hit on a sheet: its stress box checked, and its consequences written into
+// their slots (unless a slot has meanwhile been filled). Returns the new sheet and the
+// top-level keys it changed.
+export function withHit(sheet: unknown, hit: { box: { path: string, index: number } | null, consequences: { path: string, text: string }[] }): { sheet: unknown, keys: string[] } {
+  let next = sheet ?? {};
+  const keys = new Set<string>();
+  if (hit.box) {
+    const current = getPath(next, hit.box.path);
+    const boxes = Array.isArray(current) ? [...current] : [];
+    while (boxes.length <= hit.box.index) boxes.push(false);
+    boxes[hit.box.index] = true;
+    next = setPath(next, hit.box.path, boxes);
+    keys.add(trackKey(hit.box.path));
+  }
+  for (const { path, text } of hit.consequences) {
+    if (textAt(next, path).trim()) continue;
+    next = setPath(next, path, text);
+    keys.add(trackKey(path));
+  }
+  return { sheet: next, keys: [...keys] };
+}
