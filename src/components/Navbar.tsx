@@ -1,5 +1,6 @@
 import { Link, Outlet } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
+import { useTheme } from '../theme';
 
 type NavbarProps = {
   user: any,
@@ -7,6 +8,7 @@ type NavbarProps = {
 
 export default function Navbar(props: NavbarProps) {
   const { user } = props;
+  const theme = useTheme();
   
   return <>
     <header>
@@ -29,7 +31,10 @@ export default function Navbar(props: NavbarProps) {
 
     <main>
       <div className='page'>
-        <Outlet />
+        {/* As in Archivium's layout, glass themes put the page on a frosted pane. */}
+        <div className={theme.glass ? 'glass-pane' : undefined}>
+          <Outlet />
+        </div>
       </div>
     </main>
   </>;
