@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { ASPECT_KINDS, aspectKind, sheetAspectId, sheetInvokes, type AspectKind, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { ADDABLE_ASPECT_KINDS, aspectKind, sheetAspectId, sheetInvokes, type AspectKind, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { tokenIdOfActor } from '../fate/tokenState';
 
 // Someone in the scene aspects can be attached to. PCs and NPCs are one each, keyed by
@@ -18,6 +18,7 @@ const KIND_COLORS: { [kind in AspectKind]: string } = {
   advantage: '#3CB371',
   boost: '#FF7F50',
   temporary: '#C71585',
+  consequence: '#DC143C',
 };
 
 interface Props {
@@ -28,6 +29,9 @@ interface Props {
   // Temporary aspects kept on each character's sheet. They're edited through the same
   // callbacks, with ids from sheetAspectId().
   sheetAspects: { [shortname: string]: SheetAspect[] };
+  // Consequences each character in the scene has taken, by character key, as aspects
+  // (with the slot's label as their note). Only their free invokes change here.
+  consequences: { [key: string]: SceneAspect[] };
   canEdit: boolean;
   // Whether the viewer runs the scene (may end it).
   gm: boolean;
@@ -48,6 +52,9 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   onKeepOnSheet: Props['onKeepOnSheet'],
 }) {
   const kind = aspectKind(aspect.kind);
+  // Consequences are named and cleared on the sheet (or a monster's combat card).
+  const consequence = aspect.kind === 'consequence';
+  const canRename = canEdit && !consequence;
 
   // Spending a boost's last free invoke uses the boost up.
   const spendInvoke = () => {
@@ -58,14 +65,14 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   return (
     <li className='d-flex flex-col gap-0' style={{ borderLeft: `3px solid ${KIND_COLORS[aspect.kind]}`, paddingLeft: 6 }}>
       <div className='d-flex align-center gap-1'>
-        {canEdit && !onSheet && <input
+        {canRename && !onSheet && <input
           value={aspect.name}
           aria-label='Aspect name'
           onChange={({ target }) => onUpdate(aspect.id, { name: target.value })}
           style={{ flex: '1 1 auto', minWidth: 0, fontStyle: 'italic' }}
         />}
         {/* Sheets aren't live-synced, so a sheet aspect's name is saved once editing stops. */}
-        {canEdit && onSheet && <input
+        {canRename && onSheet && <input
           key={aspect.name}
           defaultValue={aspect.name}
           aria-label='Aspect name'
@@ -75,15 +82,15 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
           style={{ flex: '1 1 auto', minWidth: 0, fontStyle: 'italic' }}
         />}
-        {!canEdit && <i style={{ flex: '1 1 auto' }}>{aspect.name}</i>}
-        {canEdit && <button
+        {!canRename && <i style={{ flex: '1 1 auto' }}>{aspect.name}</i>}
+        {canRename && <button
           title={onSheet ? "Remove from the character's sheet" : 'Remove'}
           aria-label={`Remove ${aspect.name}`}
           onClick={() => onRemove(aspect.id)}
         >×</button>}
       </div>
       <div className='d-flex align-center gap-1 flex-wrap'>
-        <small style={{ color: KIND_COLORS[aspect.kind] }} title={kind.hint}>{kind.label}{onSheet && ' · on sheet'}</small>
+        <small style={{ color: KIND_COLORS[aspect.kind] }} title={kind.hint}>{kind.label}{consequence ? ` · ${aspect.note}` : onSheet && ' · on sheet'}</small>
         <span className='d-flex align-center gap-0' aria-label={`${aspect.freeInvokes} free invokes`}>
           {Array.from({ length: aspect.freeInvokes }, (_, i) => (
             <span
@@ -106,7 +113,7 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   );
 }
 
-export default function AspectsPanel({ campaignShortname, aspects, characters, sheetAspects, canEdit, gm, onAdd, onUpdate, onRemove, onKeepOnSheet, onEndScene }: Props) {
+export default function AspectsPanel({ campaignShortname, aspects, characters, sheetAspects, consequences, canEdit, gm, onAdd, onUpdate, onRemove, onKeepOnSheet, onEndScene }: Props) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<AspectKind>('situation');
   const [target, setTarget] = useState('');
@@ -163,6 +170,7 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
             target: character.shortname,
           }))
           .filter(a => a.name);
+        const taken = consequences[character.key] ?? [];
         return (
           <div key={character.key}>
             <h4 className='ma-0 mb-1'>
@@ -170,9 +178,10 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
                 ? <Link className='link link-animated' to={`/campaigns/${campaignShortname}/characters/${character.shortname}`}>{character.title}</Link>
                 : character.title}
             </h4>
-            {attached.length === 0 && kept.length === 0 && <small>No aspects in play.</small>}
+            {attached.length === 0 && kept.length === 0 && taken.length === 0 && <small>No aspects in play.</small>}
             <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
               {kept.map(aspect => <AspectRow key={aspect.id} aspect={aspect} onSheet {...rowProps} />)}
+              {taken.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
               {attached.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
             </ul>
           </div>
@@ -189,7 +198,7 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
               setKind(next);
               setInvokes(aspectKind(next).defaultInvokes);
             }}>
-              {ASPECT_KINDS.map(k => <option key={k.kind} value={k.kind} title={k.hint}>{k.label}</option>)}
+              {ADDABLE_ASPECT_KINDS.map(k => <option key={k.kind} value={k.kind} title={k.hint}>{k.label}</option>)}
             </select>
             <select aria-label='Attached to' value={target} onChange={({ target }) => setTarget(target.value)}>
               <option value=''>The scene</option>

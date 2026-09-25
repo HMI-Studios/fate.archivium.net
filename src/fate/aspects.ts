@@ -3,7 +3,7 @@
 // Archivium. Temporary character aspects live on the character's sheet instead, so
 // they outlast the scene; the scene panel shows and edits them alongside the rest.
 
-export type AspectKind = 'situation' | 'advantage' | 'boost' | 'temporary';
+export type AspectKind = 'situation' | 'advantage' | 'boost' | 'temporary' | 'consequence';
 
 export type SceneAspect = {
   id: string;
@@ -44,6 +44,34 @@ export function parseSheetAspectId(id: string): { shortname: string, index: numb
 
 export const TEMPORARY_ASPECTS_KEY = 'temporaryAspects';
 
+// Consequences are aspects too, shown and invoked alongside the rest. Their text lives
+// in the sheet's consequence slots; their free invokes are kept beside them under a
+// sheet key the layout doesn't show (a monster token keeps its own copy, see
+// fate/tokenState.ts), keyed by slot path and remembering the text they were for, so a
+// new consequence in the slot starts afresh. A consequence nobody has touched yet has
+// the one free invoke taking it gives.
+export const CONSEQUENCE_INVOKES_KEY = 'consequenceInvokes';
+
+export type ConsequenceInvokes = { [slotPath: string]: { text: string, invokes: number } };
+
+export function consequenceInvokes(sheet: Record<string, unknown> | undefined, path: string, text: string): number {
+  const stored = (sheet?.[CONSEQUENCE_INVOKES_KEY] as ConsequenceInvokes | undefined)?.[path];
+  return stored && stored.text === text ? Math.max(0, stored.invokes) : 1;
+}
+
+export function withConsequenceInvokes(current: unknown, path: string, text: string, invokes: number): ConsequenceInvokes {
+  const stored = current && typeof current === 'object' ? current as ConsequenceInvokes : {};
+  return { ...stored, [path]: { text, invokes: Math.max(0, invokes) } };
+}
+
+// Ids of consequences shown in the scene panel: `consequence:<actor key>:<slot path>`.
+export const consequenceId = (actorKey: string, path: string) => `consequence:${actorKey}:${path}`;
+
+export function parseConsequenceId(id: string): { actorKey: string, path: string } | null {
+  const match = /^consequence:(.+):([^:]+)$/.exec(id);
+  return match ? { actorKey: match[1], path: match[2] } : null;
+}
+
 // A scene aspect as stored on the scene sheet (Fate scene layout path `aspects`). The
 // sheet only shows name, invokes and note; the rest ride along for the game room.
 export type SceneSheetAspect = SheetAspect & {
@@ -55,7 +83,8 @@ export type SceneSheetAspect = SheetAspect & {
 
 export const SCENE_ASPECTS_KEY = 'aspects';
 
-const isKind = (kind: unknown): kind is AspectKind => ASPECT_KINDS.some(k => k.kind === kind);
+// (Consequences come from character sheets, never the scene's.)
+const isKind = (kind: unknown): kind is AspectKind => ADDABLE_ASPECT_KINDS.some(k => k.kind === kind);
 
 // Entries written in Archivium have no kind or id: they're situation aspects on the
 // scene, with ids from their position so clients loading them at once agree.
@@ -89,6 +118,11 @@ export const ASPECT_KINDS: { kind: AspectKind, label: string, defaultInvokes: nu
   { kind: 'advantage', label: 'Advantage', defaultInvokes: 1, hint: 'Created with Create an Advantage' },
   { kind: 'boost', label: 'Boost', defaultInvokes: 1, hint: 'Vanishes once invoked' },
   { kind: 'temporary', label: 'Temporary', defaultInvokes: 0, hint: 'Kept on the character’s sheet, so it outlasts the scene' },
+  // Not added from the panel: consequences are taken on the sheet or a combat card.
+  { kind: 'consequence', label: 'Consequence', defaultInvokes: 1, hint: 'Taken to absorb a hit; whoever inflicted it gets a free invoke' },
 ];
+
+// The kinds the panel can add.
+export const ADDABLE_ASPECT_KINDS = ASPECT_KINDS.filter(k => k.kind !== 'consequence');
 
 export const aspectKind = (kind: AspectKind) => ASPECT_KINDS.find(k => k.kind === kind)!;
