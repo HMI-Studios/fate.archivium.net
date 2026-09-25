@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ARCHIVIUM_URL } from '../App';
 import { Link, useNavigate } from 'react-router';
-import { acceptInvite, declineInvite, fetchMyInvites, type MyInvite } from '../fate/members';
+import { acceptInvite, declineInvite, fetchMyInvites, forgetPendingJoin, pendingJoin, type MyInvite } from '../fate/members';
 import { roleLabel } from '../perms';
 import type { Campaign } from './Campaign';
 
@@ -15,6 +15,8 @@ export default function Home({ user }: Props) {
   const [invites, setInvites] = useState<MyInvite[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A join link followed before signing in, if signing in didn't lead back to it.
+  const [pending, setPending] = useState(pendingJoin);
 
   useEffect(() => {
     fetch(`${ARCHIVIUM_URL}/api/universes`, { credentials: 'include' }).then(async (response) => {
@@ -49,6 +51,11 @@ export default function Home({ user }: Props) {
   };
 
   return <>
+    {pending && <p className='ma-0 mb-2 d-flex align-center gap-2 flex-wrap'>
+      <span>You were following a link to join <b>{pending.campaign}</b>.</span>
+      <Link className='link link-animated' to={pending.url}>Continue</Link>
+      <button onClick={() => { forgetPendingJoin(); setPending(null); }}>Dismiss</button>
+    </p>}
     {invites.length > 0 && <>
       <h2 className='mb-1'>Invitations</h2>
       {error && <p className='color-error ma-0 mb-1'>{error}</p>}

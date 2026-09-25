@@ -71,6 +71,11 @@ export const setPermission = (campaign: string, username: string, permissionLeve
 export const acceptInvite = (campaign: string, username: string, permissionLevel: number) =>
   setPermission(campaign, username, permissionLevel);
 
+// Asking to join: any signed-in user can ask for a level on any campaign, and its
+// admins approve or deny it (Archivium notifies the owner).
+export const requestAccess = (campaign: string, permissionLevel: number) =>
+  send(`${universeUrl(campaign)}/request`, 'PUT', { permissionLevel });
+
 export const declineInvite = (campaign: string, username: string) =>
   send(`${universeUrl(campaign)}/request/${encodeURIComponent(username)}`, 'DELETE');
 
@@ -80,7 +85,43 @@ export const approveRequest = (campaign: string, username: string, permissionLev
 
 export const denyRequest = declineInvite;
 
-// A link straight to an invitation, for sending to the invitee (they also see it in
-// their campaign list).
+// A link to a campaign's join page. Someone invited can accept there; anyone else can
+// ask to join with the link's role, for the GM to approve.
 export const joinLink = (campaign: string, permissionLevel: number) =>
   `${window.location.origin}/campaigns/${campaign}/join?level=${permissionLevel}`;
+
+// A join link followed while logged out is remembered, per browser, in case logging in
+// or creating an account doesn't bring its visitor back to it (Archivium's usually do).
+const PENDING_JOIN_KEY = 'fate.pendingJoin';
+const JOIN_PATH = /^\/campaigns\/([^/]+)\/join$/;
+
+export type PendingJoin = { campaign: string, url: string };
+
+// Resolves to the campaign being joined, if this is a join page.
+export function rememberPendingJoin(): string | null {
+  const match = JOIN_PATH.exec(window.location.pathname);
+  if (!match) return null;
+  try {
+    window.localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({ campaign: match[1], url: window.location.pathname + window.location.search }));
+  } catch {
+    // Not remembering is fine.
+  }
+  return match[1];
+}
+
+export function pendingJoin(): PendingJoin | null {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(PENDING_JOIN_KEY) ?? 'null');
+    return stored && typeof stored.campaign === 'string' && typeof stored.url === 'string' ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function forgetPendingJoin(): void {
+  try {
+    window.localStorage.removeItem(PENDING_JOIN_KEY);
+  } catch {
+    // Nothing to forget.
+  }
+}

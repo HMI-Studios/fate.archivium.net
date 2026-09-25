@@ -6,6 +6,7 @@ import CampaignSettings from './pages/CampaignSettings';
 import JoinCampaign from './pages/JoinCampaign';
 import Players from './pages/Players';
 import JournalPage from './pages/JournalPage';
+import { rememberPendingJoin } from './fate/members';
 import Character from './pages/Character';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
@@ -34,11 +35,16 @@ export default function App() {
   </>;
 
   if (!user) {
+    const joining = rememberPendingJoin();
     // Archivium's login and sign-up pages send you back to `page` afterwards.
     const pageQuery = new URLSearchParams();
     pageQuery.append('page', window.location.href);
     return <div className='d-flex flex-col gap-2'>
       <h1 className='mb-0'>Fate on Archivium</h1>
+      {joining && <p className='ma-0'>
+        You've been sent a link to join the campaign <b>{joining}</b>. Log in, or create an
+        account if you don't have one yet, and you'll be brought back here to join.
+      </p>}
       <p className='ma-0'>This app uses your Archivium account, and brings you back here once you're signed in.</p>
       <div className='d-flex gap-3 flex-wrap'>
         <a className='link link-animated' href={`${ARCHIVIUM_URL}/login?${pageQuery}`}>Log in</a>

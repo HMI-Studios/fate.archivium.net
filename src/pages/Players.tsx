@@ -21,6 +21,7 @@ export default function Players({ user }: Props) {
   const [invites, setInvites] = useState<AccessListing[]>([]);
   const [requests, setRequests] = useState<AccessListing[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
+  const [linkLevel, setLinkLevel] = useState<number>(PERMS.WRITE);
 
   const load = async () => {
     const response = await fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}`, { credentials: 'include' });
@@ -139,6 +140,20 @@ export default function Players({ user }: Props) {
         <p className='ma-0 mt-1'><small style={{ opacity: 0.8 }}>
           {CAMPAIGN_ROLES.map(r => `${r.label}: ${r.description.toLowerCase()}.`).join(' ')} They'll see the
           invitation in their campaign list here, and get an Archivium notification.
+        </small></p>
+
+        <h3 className='mb-1'>Join link</h3>
+        <div className='d-flex gap-2 flex-wrap align-center'>
+          <select aria-label='Role the link asks for' value={linkLevel} onChange={({ target }) => setLinkLevel(Number(target.value))}>
+            {assignable.filter(r => r.level < PERMS.OWNER).map(r => <option key={r.level} value={r.level}>{r.label}</option>)}
+          </select>
+          <button onClick={() => copy(joinLink(campaignShortname, linkLevel))}>
+            {copied === joinLink(campaignShortname, linkLevel) ? 'Copied' : 'Copy join link'}
+          </button>
+        </div>
+        <p className='ma-0 mt-1'><small style={{ opacity: 0.8 }}>
+          Anyone with the link can ask to join with that role, including people who don't have an Archivium
+          account yet (they can make one on the way). Their requests show up below for you to approve.
         </small></p>
 
         {requests.length > 0 && <>
