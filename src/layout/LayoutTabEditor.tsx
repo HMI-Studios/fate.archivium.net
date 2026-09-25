@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import {
   entryListValues,
   evaluate,
@@ -23,6 +23,8 @@ type LayoutTabEditorProps = {
   data: unknown,
   itemTitle: string,
   onChange: (data: unknown) => void,
+  // Lets the page show its own editor for a field; returning undefined keeps the default.
+  renderField?: (field: LayoutField, props: { id: string, data: unknown, set: (path: string, value: unknown) => void }) => ReactNode | undefined,
 };
 
 type FieldProps<F> = {
@@ -205,7 +207,7 @@ function Field({ field, id, data, set, itemTitle }: FieldProps<LayoutField> & { 
   }
 }
 
-export default function LayoutTabEditor({ layout, data, itemTitle, onChange }: LayoutTabEditorProps) {
+export default function LayoutTabEditor({ layout, data, itemTitle, onChange, renderField }: LayoutTabEditorProps) {
   const set = (path: string, value: unknown) => onChange(setPath(data ?? {}, path, value));
   const problems = validateLayoutData(layout, data);
 
@@ -223,16 +225,12 @@ export default function LayoutTabEditor({ layout, data, itemTitle, onChange }: L
           >
             <h2 className='tab-layout-title'>{section.title}</h2>
             <div className='tab-layout-body'>
-              {section.fields.map((field, k) => (
-                <Field
-                  key={k}
-                  field={field}
-                  id={`${layout.id}-${i}-${j}-${k}`}
-                  data={data}
-                  set={set}
-                  itemTitle={itemTitle}
-                />
-              ))}
+              {section.fields.map((field, k) => {
+                const id = `${layout.id}-${i}-${j}-${k}`;
+                const custom = renderField?.(field, { id, data, set });
+                if (custom !== undefined) return <Fragment key={k}>{custom}</Fragment>;
+                return <Field key={k} field={field} id={id} data={data} set={set} itemTitle={itemTitle} />;
+              })}
             </div>
           </section>
         ))}
