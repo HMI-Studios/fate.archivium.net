@@ -81,9 +81,12 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
   const replaced = roll.invokes.filter(i => i.previousDice);
 
   const pickAspect = aspects.find(a => a.id === pick);
-  const noFatePoint = Boolean(pickAspect && pickAspect.freeInvokes === 0 && roll.character && (fatePoints ?? 0) <= 0);
+  // Whether whoever rolled is out of fate points (unknown until their sheet loads, and
+  // for rolls not made for a character).
+  const broke = Boolean(roll.character) && fatePoints !== undefined && fatePoints <= 0;
   // An aspect already paid for on this roll can only be invoked again with a free invoke.
   const spent = (a: InvokableAspect) => a.freeInvokes === 0 && paidInvokeUsed(roll, a);
+  const unavailable = (a: InvokableAspect) => spent(a) || (a.freeInvokes === 0 && broke);
 
   const invoke = (effect: InvokeEffect) => {
     onInvoke(pick, effect);
@@ -120,17 +123,17 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
             {groupByOwner(aspects).map(([owner, group]) => (
               <optgroup key={owner} label={owner}>
                 {group.map(a => (
-                  <option key={a.id} value={a.id} disabled={spent(a)}>
-                    {a.name} · {spent(a) ? 'already invoked on this roll' : a.freeInvokes > 0 ? 'free invoke' : 'fate point'}
+                  <option key={a.id} value={a.id} disabled={unavailable(a)}>
+                    {a.name} · {spent(a) ? 'already invoked on this roll' : a.freeInvokes > 0 ? 'free invoke' : broke ? 'fate point (none left)' : 'fate point'}
                   </option>
                 ))}
               </optgroup>
             ))}
           </select>
-          {noFatePoint && <small className='color-error'>{who} has no fate points left.</small>}
+          {broke && <small style={{ opacity: 0.8 }}>{who} has no fate points left, so only free invokes can be used.</small>}
           <div className='d-flex gap-1 flex-wrap'>
-            <button disabled={!pick || noFatePoint || (pickAspect && spent(pickAspect))} onClick={() => invoke('bonus')}>+2</button>
-            <button disabled={!pick || noFatePoint || (pickAspect && spent(pickAspect))} onClick={() => invoke('reroll')}>Reroll</button>
+            <button disabled={!pickAspect || unavailable(pickAspect)} onClick={() => invoke('bonus')}>+2</button>
+            <button disabled={!pickAspect || unavailable(pickAspect)} onClick={() => invoke('reroll')}>Reroll</button>
             <button onClick={() => { setPick(''); setChoosing(false); }}>Cancel</button>
           </div>
         </div>
