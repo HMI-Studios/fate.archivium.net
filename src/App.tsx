@@ -19,14 +19,26 @@ export const ARCHIVIUM_URL = 'https://dev.archivium.net';
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  // Set when Archivium couldn't be reached, so we can offer to try again instead of loading forever.
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
+  const loadUser = () => {
+    setLoading(true);
+    setFailed(false);
     fetch(`${ARCHIVIUM_URL}/api/me`, { credentials: 'include' }).then(async (response) => {
+      if (response.status >= 500) throw new Error(`Archivium responded ${response.status}`);
       const data = await response.json()
       setUser(data);
-      setLoading(false);
-    });
-  }, []);
+    }).catch(() => setFailed(true)).finally(() => setLoading(false));
+  };
+
+  useEffect(loadUser, []);
+
+  if (failed) return <div className='d-flex flex-col gap-2 my-1 mx-4'>
+    <h1 className='mb-0'>Fate on Archivium</h1>
+    <p className='ma-0'>Couldn't reach Archivium to check whether you're signed in. It may be down, or your connection may have dropped.</p>
+    <div><button onClick={loadUser}>Try again</button></div>
+  </div>;
 
   if (loading) return <>
     <div style={{height: 'calc(50vh + 25px)'}} className='w-100 d-flex justify-center align-end'>
