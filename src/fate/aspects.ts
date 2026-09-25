@@ -3,7 +3,7 @@
 // Archivium. Temporary character aspects live on the character's sheet instead, so
 // they outlast the scene; the scene panel shows and edits them alongside the rest.
 
-export type AspectKind = 'situation' | 'advantage' | 'boost' | 'temporary' | 'consequence';
+export type AspectKind = 'situation' | 'advantage' | 'boost' | 'temporary' | 'consequence' | 'character';
 
 export type SceneAspect = {
   id: string;
@@ -118,11 +118,32 @@ export const ASPECT_KINDS: { kind: AspectKind, label: string, defaultInvokes: nu
   { kind: 'advantage', label: 'Advantage', defaultInvokes: 1, hint: 'Created with Create an Advantage' },
   { kind: 'boost', label: 'Boost', defaultInvokes: 1, hint: 'Vanishes once invoked' },
   { kind: 'temporary', label: 'Temporary', defaultInvokes: 0, hint: 'Kept on the character’s sheet, so it outlasts the scene' },
-  // Not added from the panel: consequences are taken on the sheet or a combat card.
+  // Not added from the panel: consequences are taken on the sheet or a combat card,
+  // and character aspects are written on the sheet.
   { kind: 'consequence', label: 'Consequence', defaultInvokes: 1, hint: 'Taken to absorb a hit; whoever inflicted it gets a free invoke' },
+  { kind: 'character', label: 'Character', defaultInvokes: 0, hint: 'From the character sheet; invoking it costs a fate point' },
 ];
 
 // The kinds the panel can add.
-export const ADDABLE_ASPECT_KINDS = ASPECT_KINDS.filter(k => k.kind !== 'consequence');
+export const ADDABLE_ASPECT_KINDS = ASPECT_KINDS.filter(k => k.kind !== 'consequence' && k.kind !== 'character');
+
+// A character's own aspects, from the Fate Core sheet: high concept, trouble, and the rest.
+const MAIN_ASPECT_FIELDS: { path: string, label: string }[] = [
+  { path: 'highConcept', label: 'High Concept' },
+  { path: 'trouble', label: 'Trouble' },
+];
+export const MAIN_ASPECTS_KEY = 'aspects';
+
+export function mainAspects(sheet: Record<string, unknown> | undefined): { path: string, label: string, text: string }[] {
+  if (!sheet) return [];
+  const others = Array.isArray(sheet[MAIN_ASPECTS_KEY]) ? sheet[MAIN_ASPECTS_KEY] as unknown[] : [];
+  return [
+    ...MAIN_ASPECT_FIELDS.map(({ path, label }) => ({ path, label, text: typeof sheet[path] === 'string' ? sheet[path] as string : '' })),
+    ...others.map((text, i) => ({ path: `${MAIN_ASPECTS_KEY}.${i}`, label: 'Aspect', text: typeof text === 'string' ? text : '' })),
+  ].filter(aspect => aspect.text.trim());
+}
+
+// Ids of character aspects shown in the scene panel: `main:<actor key>:<sheet path>`.
+export const mainAspectId = (actorKey: string, path: string) => `main:${actorKey}:${path}`;
 
 export const aspectKind = (kind: AspectKind) => ASPECT_KINDS.find(k => k.kind === kind)!;

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text, Transformer } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
-import { CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, parseConsequenceId, parseSheetAspectId, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, mainAspectId, mainAspects, parseConsequenceId, parseSheetAspectId, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { initiativeOrder, modeOf, moveInOrder, passTurn, setCurrent, startNextRound, stepTurn, undoPass, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
 import { fetchSettings, type TurnOrderMode } from '../fate/settings';
 import { useTable } from '../fate/table';
@@ -661,6 +661,20 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     }))];
   }));
 
+  // Each character's own aspects (high concept, trouble...), from their sheet.
+  const characterAspects: { [key: string]: SceneAspect[] } = Object.fromEntries(characters.map(character => [
+    character.key,
+    mainAspects(actorSheet(character.key)).map(aspect => ({
+      id: mainAspectId(character.key, aspect.path),
+      name: aspect.text,
+      kind: 'character' as const,
+      freeInvokes: 0,
+      target: character.key,
+      targetTitle: character.title,
+      note: aspect.label,
+    })),
+  ]));
+
   const setSheetKey = (shortname: string, key: string, value: unknown) => {
     setSheets(current => ({ ...current, [shortname]: { ...current[shortname], [key]: value } }));
   };
@@ -756,6 +770,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       .map((entry, i) => ({ id: sheetAspectId(shortname, i), name: entry.name ?? '', freeInvokes: sheetInvokes(entry), ownerTitle: titleOf(shortname) }))
       .filter(a => a.name)),
     ...Object.values(consequenceAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
+    // Invoking a character's own aspect always costs a fate point.
+    ...Object.values(characterAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: 0, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
   ];
 
   const addRoll = (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => {
@@ -1670,6 +1686,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           characters={characters}
           sheetAspects={sheetAspects}
           consequences={consequenceAspects}
+          characterAspects={characterAspects}
           canEdit={canEdit}
           gm={gm}
           onAdd={addAspect}

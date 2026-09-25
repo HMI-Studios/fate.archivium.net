@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ADDABLE_ASPECT_KINDS, aspectKind, sheetAspectId, sheetInvokes, type AspectKind, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { tokenIdOfActor } from '../fate/tokenState';
@@ -19,7 +19,89 @@ const KIND_COLORS: { [kind in AspectKind]: string } = {
   boost: '#FF7F50',
   temporary: '#C71585',
   consequence: '#DC143C',
+  character: '#B8860B',
 };
+
+// How each group of aspects is shown, per viewer: folded away, or open either compactly
+// (just the aspects, grouped by kind) or for editing (with every input and button).
+type GroupView = { folded: boolean, editing: boolean };
+const VIEWS_KEY = 'fate.aspectGroupViews';
+
+function loadViews(): { [group: string]: Partial<GroupView> } {
+  try {
+    const stored = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? '{}');
+    return stored && typeof stored === 'object' ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+function useGroupViews(canEdit: boolean) {
+  const [views, setViews] = useState(loadViews);
+  // The scene's own aspects start out editable; characters start compact.
+  const viewOf = (group: string): GroupView => ({ folded: false, editing: group === SCENE_GROUP, ...views[group], ...(canEdit ? {} : { editing: false }) });
+  const change = (group: string, changes: Partial<GroupView>) => setViews(current => {
+    const next = { ...current, [group]: { ...viewOf(group), ...changes } };
+    try { localStorage.setItem(VIEWS_KEY, JSON.stringify(next)); } catch { /* Just not remembered. */ }
+    return next;
+  });
+  return { viewOf, change };
+}
+
+const SCENE_GROUP = '(scene)';
+
+// The order kinds are listed in when a group is compact.
+const COMPACT_ORDER: AspectKind[] = ['character', 'consequence', 'temporary', 'advantage', 'boost', 'situation'];
+
+const Invokes = ({ count }: { count: number }) => count > 0
+  ? <span aria-label={`${count} free invokes`} style={{ whiteSpace: 'nowrap' }}>{' '}{'●'.repeat(count)}</span>
+  : null;
+
+// A group's aspects without any controls, listed under one heading per kind.
+function CompactAspects({ aspects }: { aspects: SceneAspect[] }) {
+  return <div className='d-flex flex-col gap-1'>
+    {COMPACT_ORDER.map(kind => {
+      const ofKind = aspects.filter(a => a.kind === kind);
+      if (ofKind.length === 0) return null;
+      return <div key={kind} style={{ borderLeft: `3px solid ${KIND_COLORS[kind]}`, paddingLeft: 6 }}>
+        <small style={{ color: KIND_COLORS[kind] }} title={aspectKind(kind).hint}>{aspectKind(kind).label}</small>
+        <ul className='ma-0 pa-0' style={{ listStyle: 'none' }}>
+          {ofKind.map(aspect => <li key={aspect.id}>
+            <i>{aspect.name}</i>
+            {(kind === 'character' || kind === 'consequence') && aspect.note && <small style={{ opacity: 0.7 }}> · {aspect.note}</small>}
+            <Invokes count={aspect.freeInvokes} />
+          </li>)}
+        </ul>
+      </div>;
+    })}
+  </div>;
+}
+
+// A group's heading: a fold toggle, its title, and (for editors) the edit toggle.
+function GroupHeader({ title, view, count, canEdit, onChange }: {
+  title: ReactNode,
+  view: GroupView,
+  count: number,
+  canEdit: boolean,
+  onChange: (changes: Partial<GroupView>) => void,
+}) {
+  return <div className='d-flex align-center gap-1 mb-1'>
+    <button
+      aria-expanded={!view.folded}
+      aria-label={view.folded ? 'Show aspects' : 'Hide aspects'}
+      title={view.folded ? 'Show aspects' : 'Hide aspects'}
+      onClick={() => onChange({ folded: !view.folded })}
+      style={{ padding: '0 0.3rem', minWidth: '1.6rem' }}
+    >{view.folded ? '▸' : '▾'}</button>
+    <h4 className='ma-0' style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h4>
+    {view.folded && <small style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>{count === 1 ? '1 aspect' : `${count} aspects`}</small>}
+    {canEdit && !view.folded && <button
+      aria-pressed={view.editing}
+      title={view.editing ? 'Show just the aspects' : 'Edit these aspects and their free invokes'}
+      onClick={() => onChange({ editing: !view.editing })}
+    >{view.editing ? 'Done' : 'Edit'}</button>}
+  </div>;
+}
 
 interface Props {
   campaignShortname: string;
@@ -32,6 +114,9 @@ interface Props {
   // Consequences each character in the scene has taken, by character key, as aspects
   // (with the slot's label as their note). Only their free invokes change here.
   consequences: { [key: string]: SceneAspect[] };
+  // Each character's own aspects from their sheet (high concept, trouble...), by
+  // character key. They're changed on the sheet, and invoked with a fate point.
+  characterAspects: { [key: string]: SceneAspect[] };
   canEdit: boolean;
   // Whether the viewer runs the scene (may end it).
   gm: boolean;
@@ -54,7 +139,9 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   const kind = aspectKind(aspect.kind);
   // Consequences are named and cleared on the sheet (or a monster's combat card).
   const consequence = aspect.kind === 'consequence';
-  const canRename = canEdit && !consequence;
+  // Character aspects are written on the sheet, and have no free invokes to track.
+  const fromSheet = aspect.kind === 'character';
+  const canRename = canEdit && !consequence && !fromSheet;
 
   // Spending a boost's last free invoke uses the boost up.
   const spendInvoke = () => {
@@ -90,7 +177,7 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
         >×</button>}
       </div>
       <div className='d-flex align-center gap-1 flex-wrap'>
-        <small style={{ color: KIND_COLORS[aspect.kind] }} title={kind.hint}>{kind.label}{consequence ? ` · ${aspect.note}` : onSheet && ' · on sheet'}</small>
+        <small style={{ color: KIND_COLORS[aspect.kind] }} title={kind.hint}>{kind.label}{consequence || fromSheet ? ` · ${aspect.note}` : onSheet && ' · on sheet'}</small>
         <span className='d-flex align-center gap-0' aria-label={`${aspect.freeInvokes} free invokes`}>
           {Array.from({ length: aspect.freeInvokes }, (_, i) => (
             <span
@@ -102,7 +189,7 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
             >●</span>
           ))}
         </span>
-        {canEdit && aspect.kind !== 'boost' && (
+        {canEdit && aspect.kind !== 'boost' && !fromSheet && (
           <button title='Add a free invoke' onClick={() => onUpdate(aspect.id, { freeInvokes: aspect.freeInvokes + 1 })}>+ invoke</button>
         )}
         {canEdit && !onSheet && aspect.kind === 'temporary' && aspect.target && !tokenIdOfActor(aspect.target) && (
@@ -113,11 +200,12 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   );
 }
 
-export default function AspectsPanel({ campaignShortname, aspects, characters, sheetAspects, consequences, canEdit, gm, onAdd, onUpdate, onRemove, onKeepOnSheet, onEndScene }: Props) {
+export default function AspectsPanel({ campaignShortname, aspects, characters, sheetAspects, consequences, characterAspects, canEdit, gm, onAdd, onUpdate, onRemove, onKeepOnSheet, onEndScene }: Props) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<AspectKind>('situation');
   const [target, setTarget] = useState('');
   const [invokes, setInvokes] = useState(aspectKind('situation').defaultInvokes);
+  const { viewOf, change } = useGroupViews(canEdit);
 
   // Characters on the map, plus any an aspect is still attached to after its token was removed.
   const groups: SceneCharacter[] = [...characters];
@@ -151,13 +239,20 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
     <div className='d-flex flex-col gap-2'>
       <h3 className='ma-0'>Aspects</h3>
 
-      <div>
-        <h4 className='ma-0 mb-1'>Scene</h4>
-        {sceneAspects.length === 0 && <small>No situation aspects yet.</small>}
-        <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
-          {sceneAspects.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
-        </ul>
-      </div>
+      {(() => {
+        const view = viewOf(SCENE_GROUP);
+        return <div>
+          <GroupHeader title='Scene' view={view} count={sceneAspects.length} canEdit={canEdit} onChange={changes => change(SCENE_GROUP, changes)} />
+          {!view.folded && <>
+            {sceneAspects.length === 0 && <small>No situation aspects yet.</small>}
+            {view.editing
+              ? <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
+                {sceneAspects.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
+              </ul>
+              : <CompactAspects aspects={sceneAspects} />}
+          </>}
+        </div>;
+      })()}
 
       {groups.map(character => {
         const attached = aspects.filter(a => a.target === character.key);
@@ -171,19 +266,31 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
           }))
           .filter(a => a.name);
         const taken = consequences[character.key] ?? [];
+        const own = characterAspects[character.key] ?? [];
+        const view = viewOf(character.key);
+        const count = own.length + kept.length + taken.length + attached.length;
         return (
           <div key={character.key}>
-            <h4 className='ma-0 mb-1'>
-              {character.shortname
+            <GroupHeader
+              title={character.shortname
                 ? <Link className='link link-animated' to={`/campaigns/${campaignShortname}/characters/${character.shortname}`}>{character.title}</Link>
                 : character.title}
-            </h4>
-            {attached.length === 0 && kept.length === 0 && taken.length === 0 && <small>No aspects in play.</small>}
-            <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
-              {kept.map(aspect => <AspectRow key={aspect.id} aspect={aspect} onSheet {...rowProps} />)}
-              {taken.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
-              {attached.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
-            </ul>
+              view={view}
+              count={count}
+              canEdit={canEdit}
+              onChange={changes => change(character.key, changes)}
+            />
+            {!view.folded && <>
+              {count === 0 && <small>No aspects in play.</small>}
+              {view.editing
+                ? <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
+                  {own.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
+                  {kept.map(aspect => <AspectRow key={aspect.id} aspect={aspect} onSheet {...rowProps} />)}
+                  {taken.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
+                  {attached.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
+                </ul>
+                : <CompactAspects aspects={[...own, ...taken, ...kept, ...attached]} />}
+            </>}
           </div>
         );
       })}
