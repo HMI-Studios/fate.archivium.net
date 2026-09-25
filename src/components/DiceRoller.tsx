@@ -24,6 +24,7 @@ interface Props {
   onInvoke: (rollId: string, aspectId: string, effect: InvokeEffect) => void;
   // Shown on the drawer's Journal tab.
   journal: ReactNode;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const tabStyle = (selected: boolean) => ({ fontWeight: selected ? 'bold' : undefined, opacity: selected ? 1 : 0.7 });
@@ -123,7 +124,7 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
   );
 }
 
-export default function DiceRoller({ rolls, characters, skills, fatePoints, aspects, canRoll, onRoll, onInvoke, journal }: Props) {
+export default function DiceRoller({ rolls, characters, skills, fatePoints, aspects, canRoll, onRoll, onInvoke, journal, onOpenChange }: Props) {
   const [character, setCharacter] = useState('');
   const [skill, setSkill] = useState('');
   const [modifier, setModifier] = useState(0);
@@ -151,7 +152,7 @@ export default function DiceRoller({ rolls, characters, skills, fatePoints, aspe
   });
 
   return (
-    <SideDrawer title='Dice & journal' storageKey='fate.diceDrawerOpen' badge={unseen} onOpenChange={setOpen}>
+    <SideDrawer title='Dice & journal' storageKey='fate.diceDrawerOpen' badge={unseen} onOpenChange={o => { setOpen(o); onOpenChange?.(o); }}>
       <div className='d-flex gap-1 mb-2' role='tablist'>
         <button role='tab' aria-selected={tab === 'dice'} style={tabStyle(tab === 'dice')} onClick={() => setTab('dice')}>
           Dice{tab !== 'dice' && unseen ? ` (${unseen})` : ''}

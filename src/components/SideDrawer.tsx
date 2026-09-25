@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { TOPBAR_HEIGHT } from './PlayLayout';
 
-// A panel docked to the right edge of the window that slides open and closed, with a
-// tab to toggle it that stays visible while it's closed (like D&D Beyond's game log).
+// A panel docked to an edge of the game room that slides open and closed over the
+// canvas, with a tab to toggle it that stays visible while it's closed (like D&D
+// Beyond's game log).
 
 function readOpen(storageKey: string, fallback: boolean): boolean {
   try {
@@ -14,6 +16,7 @@ function readOpen(storageKey: string, fallback: boolean): boolean {
 
 interface Props {
   title: string;
+  side?: 'left' | 'right';
   // Remembers, per browser, whether the drawer was left open.
   storageKey: string;
   defaultOpen?: boolean;
@@ -23,9 +26,9 @@ interface Props {
   children: ReactNode;
 }
 
-const WIDTH = 'min(22rem, 92vw)';
+export const DRAWER_WIDTH = 'min(22rem, 92vw)';
 
-export default function SideDrawer({ title, storageKey, defaultOpen = true, badge, onOpenChange, children }: Props) {
+export default function SideDrawer({ title, side = 'right', storageKey, defaultOpen = true, badge, onOpenChange, children }: Props) {
   const [open, setOpen] = useState(() => readOpen(storageKey, defaultOpen));
 
   useEffect(() => {
@@ -37,19 +40,21 @@ export default function SideDrawer({ title, storageKey, defaultOpen = true, badg
     onOpenChange?.(open);
   }, [open]);
 
-  return (<>
-    {/* On wide screens, make room for the open drawer instead of covering the page. */}
-    {open && <style>{`@media (min-width: 60rem) { body { padding-right: ${WIDTH}; } }`}</style>}
+  const left = side === 'left';
+  // Arrows point the way the drawer will move.
+  const arrow = open === left ? '‹' : '›';
+
+  return (
     <aside
       aria-label={title}
       style={{
-        position: 'fixed',
-        top: 'calc(var(--navbar-height, 3.2rem) + 2 * var(--navbar-margin, 0.5rem))',
-        right: 0,
+        position: 'absolute',
+        top: TOPBAR_HEIGHT,
+        [side]: 0,
         bottom: 0,
-        width: WIDTH,
+        width: DRAWER_WIDTH,
         zIndex: 20,
-        transform: open ? 'none' : `translateX(${WIDTH})`,
+        transform: open ? 'none' : `translateX(${left ? `calc(-1 * ${DRAWER_WIDTH})` : DRAWER_WIDTH})`,
         transition: 'transform 0.2s ease',
       }}
     >
@@ -60,15 +65,15 @@ export default function SideDrawer({ title, storageKey, defaultOpen = true, badg
         style={{
           position: 'absolute',
           top: '1rem',
-          right: '100%',
-          borderTopRightRadius: 0,
-          borderBottomRightRadius: 0,
+          ...(left
+            ? { left: '100%', borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }
+            : { right: '100%', borderTopRightRadius: 0, borderBottomRightRadius: 0 }),
           padding: '0.5rem 0.4rem',
           writingMode: 'vertical-rl',
           whiteSpace: 'nowrap',
         }}
       >
-        {open ? '›' : '‹'} {title}{!open && badge ? ` (${badge})` : ''}
+        {arrow} {title}{!open && badge ? ` (${badge})` : ''}
       </button>
       <div
         style={{
@@ -77,12 +82,12 @@ export default function SideDrawer({ title, storageKey, defaultOpen = true, badg
           padding: '0.75rem',
           boxSizing: 'border-box',
           background: 'var(--sheet-color, #333)',
-          borderLeft: '1px solid var(--tab-border-color, #4f4f4f)',
-          boxShadow: open ? '-0.25rem 0 0.75rem rgb(0 0 0 / 25%)' : 'none',
+          [left ? 'borderRight' : 'borderLeft']: '1px solid var(--tab-border-color, #4f4f4f)',
+          boxShadow: open ? `${left ? '' : '-'}0.25rem 0 0.75rem rgb(0 0 0 / 25%)` : 'none',
         }}
       >
         {children}
       </div>
     </aside>
-  </>);
+  );
 }

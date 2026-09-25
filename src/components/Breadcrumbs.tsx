@@ -19,7 +19,7 @@ function fetchTitle(path: string): Promise<string | null> {
   return title;
 }
 
-function useTitle(path: string | null): string | null {
+export function useTitle(path: string | null): string | null {
   const [title, setTitle] = useState<string | null>(null);
   useEffect(() => {
     setTitle(null);

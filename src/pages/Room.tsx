@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
-import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
+import { archiviumItemUrl } from '../components/Breadcrumbs';
+import { FullScreen, TopBar, TopBarMenu } from '../components/PlayLayout';
 import SceneCanvas from '../components/SceneCanvas';
 import { isLive, useSyncedDoc } from '../sync';
 import { isGameMaster } from '../perms';
@@ -90,42 +91,16 @@ export default function Room({ user }: Props) {
     });
   };
 
-  const offlineNotice = room?.status === 'offline' && (
-    <p className='ma-0 mb-1'><small>Couldn't connect to the live room, so scene changes won't show up until you reload.</small></p>
-  );
-
   // Hiding is only soft for now: players' screens only ever load the active scene,
   // but they can still read other scenes through the API. When Archivium can hide
   // items, unrevealed scenes should be hidden there too; `scene/` docs already
   // defer to item permissions, so this view needs no change for that.
-  const breadcrumbs = <Breadcrumbs campaign={campaignShortname} current='Game room' />;
+  const shownScene = isGM ? editingScene ?? activeScene : activeScene;
 
-  if (!isGM) {
-    return <>
-      {breadcrumbs}
-      <h1 className='mb-1'>{campaign.title}</h1>
-      {offlineNotice}
-      {activeScene
-        ? <>
-          <h2 className='mt-0 mb-1'>{sceneTitle(activeScene)}</h2>
-          <SceneCanvas key={activeScene} campaignShortname={campaignShortname} sceneShortname={activeScene} gm={false} userName={user.username} />
-        </>
-        : <p>Waiting for the GM to show a scene…</p>}
-    </>;
-  }
-
-  const shownScene = editingScene ?? activeScene;
-
-  return <>
-    {breadcrumbs}
-    <h1 className='mb-1'>{campaign.title}</h1>
-    {offlineNotice}
-    <div className='d-flex gap-3'>
-      <div style={{ flex: '0 0 220px' }}>
-        <h3 className='mt-0 mb-1'>Scenes</h3>
-        <p className='ma-0 mb-2'><small>
-          Players see: <b>{activeScene ? sceneTitle(activeScene) : 'nothing'}</b>
-        </small></p>
+  const scenesMenu = isGM && (
+    <TopBarMenu label='Scenes'>
+      {close => <div className='d-flex flex-col gap-2'>
+        <small>Players see: <b>{activeScene ? sceneTitle(activeScene) : 'nothing'}</b></small>
         <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
           {scenes.map(scene => {
             const isActive = scene.shortname === activeScene;
@@ -135,7 +110,7 @@ export default function Room({ user }: Props) {
                 <a
                   className='link link-animated'
                   style={{ fontWeight: isOpen ? 'bold' : undefined, cursor: 'pointer' }}
-                  onClick={() => setEditingScene(scene.shortname)}
+                  onClick={() => { setEditingScene(scene.shortname); close(); }}
                 >
                   {scene.title}{isActive && ' (live)'}
                 </a>
@@ -146,30 +121,46 @@ export default function Room({ user }: Props) {
             );
           })}
         </ul>
-        {activeScene && <button className='mt-2' disabled={!canDrive} onClick={() => showToPlayers(null)}>Hide scene from players</button>}
-        <p className='mt-2'>
+        {activeScene && <button disabled={!canDrive} onClick={() => showToPlayers(null)}>Hide scene from players</button>}
+        <div className='d-flex flex-col gap-1'>
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/maps/new`}>New scene</Link>
-        </p>
-        <p className='ma-0'>
+          {shownScene && <a className='link link-animated' href={archiviumItemUrl(campaignShortname, shownScene)}>Prepare this scene in Archivium</a>}
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/players`}>Players</Link>
-          {' · '}
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/settings`}>Campaign settings</Link>
-        </p>
-      </div>
-      <div className='grow-1' style={{ minWidth: 0 }}>
-        {shownScene
-          ? <>
-            <h2 className='mt-0 mb-1'>
-              {sceneTitle(shownScene)}
-              {shownScene !== activeScene && <small> (players can't see this)</small>}
-            </h2>
-            <p className='ma-0 mb-1'>
-              <small><a className='link link-animated' href={archiviumItemUrl(campaignShortname, shownScene)}>Prepare this scene in Archivium</a></small>
-            </p>
-            <SceneCanvas key={shownScene} campaignShortname={campaignShortname} sceneShortname={shownScene} userName={user.username} />
-          </>
-          : <p>Pick a scene to edit, then show it to the players when it's ready.</p>}
-      </div>
-    </div>
+        </div>
+      </div>}
+    </TopBarMenu>
+  );
+
+  const header = <>
+    <Link className='link link-animated' to={`/campaigns/${campaignShortname}`} title='Back to the campaign'>‹ {campaign.title}</Link>
+    {scenesMenu}
+    {shownScene && <b style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sceneTitle(shownScene)}</b>}
+    {isGM && shownScene && shownScene !== activeScene && <small>(players can't see this)</small>}
+    {isGM && shownScene && shownScene === activeScene && <small>(live)</small>}
   </>;
+  const headerEnd = room?.status === 'offline' && (
+    <small title="Couldn't connect to the live room, so scene changes won't show up until you reload.">Room offline</small>
+  );
+
+  if (!shownScene) {
+    return <FullScreen>
+      <TopBar left={header} right={headerEnd} />
+      <div className='d-flex justify-center align-center' style={{ position: 'absolute', inset: 0, padding: '1rem', textAlign: 'center' }}>
+        <p className='ma-0'>{isGM
+          ? 'Pick a scene to edit from the Scenes menu, then show it to the players when it’s ready.'
+          : 'Waiting for the GM to show a scene…'}</p>
+      </div>
+    </FullScreen>;
+  }
+
+  return <SceneCanvas
+    key={shownScene}
+    campaignShortname={campaignShortname}
+    sceneShortname={shownScene}
+    gm={isGM}
+    userName={user.username}
+    header={header}
+    headerEnd={headerEnd}
+  />;
 }

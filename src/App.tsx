@@ -55,22 +55,21 @@ export default function App() {
   
   return (
     <Routes>
+      {/* The game room and maps fill the window, with their own top bar. */}
+      <Route path='campaigns/:campaignShortname/play' element={<Room user={user} />} />
+      <Route path='campaigns/:campaignShortname/maps/:mapShortname' element={<Map user={user} />} />
       <Route element={<Navbar user={user} />}>
         <Route index element={<Home user={user} />} />
         <Route path='new' element={<NewCampaign />} />
         <Route path='campaigns'>
           <Route path=':campaignShortname' element={<Campaign user={user} />} />
-          <Route path=':campaignShortname/play' element={<Room user={user} />} />
           <Route path=':campaignShortname/settings' element={<CampaignSettings user={user} />} />
           <Route path=':campaignShortname/players' element={<Players user={user} />} />
           <Route path=':campaignShortname/journal' element={<JournalPage user={user} />} />
           <Route path=':campaignShortname/join' element={<JoinCampaign user={user} />} />
           <Route path=':campaignShortname/items/new' element={<NewItem />} />
           <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />
-          <Route path=':campaignShortname/maps'>
-            <Route path='new' element={<NewItem fixedType='location' />} />
-            <Route path=':mapShortname' element={<Map user={user} />} />
-          </Route>
+          <Route path=':campaignShortname/maps/new' element={<NewItem fixedType='location' />} />
         </Route>
       </Route>
     </Routes>

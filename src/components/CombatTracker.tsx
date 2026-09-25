@@ -82,7 +82,7 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
   if (!state) {
     if (!canRun || entries.length === 0) return null;
     return (
-      <div className='d-flex align-center gap-2 flex-wrap mb-2'>
+      <div className='d-flex align-center gap-2 flex-wrap pa-1' style={{ border: '1px solid var(--tab-border-color, #4f4f4f)', borderRadius: 6, background: 'var(--tab-color, #2a2a2a)' }}>
         <small>Start a conflict:</small>
         <button onClick={() => onStart('physical')} title='Turn order by Notice, then Athletics, then Physique'>Physical</button>
         <button onClick={() => onStart('mental')} title='Turn order by Empathy, then Rapport, then Will'>Mental</button>
@@ -103,7 +103,7 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
   return (
     <section
       aria-label='Turn order'
-      className='d-flex flex-col gap-1 mb-2 pa-1'
+      className='d-flex flex-col gap-1 pa-1'
       style={{ border: '1px solid var(--tab-border-color, #4f4f4f)', borderRadius: 6, background: 'var(--tab-color, #2a2a2a)' }}
     >
       <div className='d-flex align-center gap-2 flex-wrap'>

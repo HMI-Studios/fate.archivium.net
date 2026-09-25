@@ -1,5 +1,5 @@
 import Konva from 'konva';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
@@ -21,6 +21,8 @@ import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
 import CombatTracker, { type CombatEntry } from './CombatTracker';
 import DiceRoller, { type InvokableAspect } from './DiceRoller';
 import Journal from './Journal';
+import { FullScreen, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
+import SideDrawer, { DRAWER_WIDTH } from './SideDrawer';
 
 export type BaseShape = {
   id: string;
@@ -134,6 +136,10 @@ interface Props {
   gm?: boolean;
   // The viewer's Archivium username, shown on their dice rolls.
   userName?: string;
+  // The start of the top bar: where you are and how to get back.
+  header: ReactNode;
+  // The end of the top bar, before the scene's own status.
+  headerEnd?: ReactNode;
 }
 
 // The layout tabs holding characters' sheets (temporary aspects, stress, fate points)
@@ -141,7 +147,7 @@ interface Props {
 const SHEET_TAB = FATE_CORE_LAYOUT.id;
 const SCENE_TAB = FATE_SCENE_LAYOUT.id;
 
-export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true, userName = '' }: Props) {
+export default function SceneCanvas({ campaignShortname, sceneShortname, gm = true, userName = '', header, headerEnd }: Props) {
   const doc = useSyncedDoc(`scene/${campaignShortname}/${sceneShortname}`);
   const live = isLive(doc?.status);
   const canEdit = live && !doc.readOnly;
@@ -170,6 +176,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   const [tool, setTool] = useState<'pan' | 'draw'>('pan');
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const backgroundInput = useRef<HTMLInputElement | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
   const fittedFor = useRef<string | null>(null);
@@ -933,177 +940,210 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   const activeTool = canEdit ? tool : 'pan';
 
+  const status = doc?.status === 'connecting' ? 'Connecting…'
+    : doc?.status === 'offline' ? 'Offline: last saved version, read-only'
+    : doc?.status === 'reconnecting' ? 'Reconnecting… changes will sync when it’s back'
+    : null;
+
+  // Floating panels sit between the drawers, clear of their tabs.
+  const [aspectsOpen, setAspectsOpen] = useState(false);
+  const [diceOpen, setDiceOpen] = useState(false);
+  const between = {
+    left: aspectsOpen ? `calc(${DRAWER_WIDTH} + 2.5rem)` : '3rem',
+    right: diceOpen ? `calc(${DRAWER_WIDTH} + 2.5rem)` : '3rem',
+  };
+
+  const divider = <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--menu-border-color, #6e6e6e)' }} />;
+
   return (
-    <div>
-      <CombatTracker
-        state={combat}
-        entries={combatEntries}
-        canRun={canEdit && gm}
-        canMarkStress={canEdit}
-        onToggleStress={toggleStress}
-        onSetConsequence={setConsequence}
-        onStart={startCombat}
-        onStep={direction => combat && setCombat(stepTurn(combat, presentTokens(), direction))}
-        onEnd={() => setCombat(null)}
-        onMove={(tokenId, direction) => combat && setCombat(moveInOrder(combat, tokenId, direction))}
-        onRemove={removeCombatant}
-        onAdd={tokenId => combat && setCombat({ ...combat, order: [...combat.order, tokenId], current: combat.current ?? tokenId })}
-        canPass={canEdit}
-        onPass={tokenId => combat && setCombat(passTurn(combat, tokenId))}
-        onNextRound={tokenId => combat && setCombat(startNextRound(combat, tokenId))}
-        onUndo={() => combat && setCombat(undoPass(combat))}
-        onSetCurrent={tokenId => combat && setCombat(setCurrent(combat, tokenId))}
-      />
-      {doc?.status === 'connecting' && <p className='ma-0 mb-1'><small>Connecting to the live scene…</small></p>}
-      {doc?.status === 'offline' && <p className='ma-0 mb-1'><small>Live sync is unavailable, so this is the last saved version and can't be edited.</small></p>}
-      {doc?.status === 'reconnecting' && <p className='ma-0 mb-1'><small>Reconnecting to the live scene… changes made meanwhile will sync when it's back.</small></p>}
-      {canEdit && <div>
-        <button onClick={addRect}>Add Rectangle</button>
-        <select value={tokenPick} onChange={({ target }) => setTokenPick(target.value)}>
-          <option value=''>Select a character/NPC/monster...</option>
-          {tokenCandidates.map(item => (
-            <option key={item.shortname} value={item.shortname}>{item.title}</option>
-          ))}
-        </select>
-        <button onClick={addToken} disabled={!tokenPick}>Add Token</button>
-        <button onClick={deleteSelected} disabled={!selectedId}>Delete Selected</button>
-        {gm && <label style={{ marginLeft: 10 }}>
-          Background image:
-          <input
-            type='file'
-            accept='image/*'
-            disabled={uploading}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadImage(file);
-              e.target.value = '';
-            }}
-          />
-        </label>}
-        {gm && meta.imageStamp !== null && <button onClick={removeBackground} disabled={uploading}>Remove background</button>}
-      </div>}
-      <div style={{ marginTop: 10 }}>
-        {canEdit && <>
-          <button onClick={() => setTool('pan')} disabled={tool === 'pan'}>Pan</button>
-          <button onClick={() => setTool('draw')} disabled={tool === 'draw'}>Draw</button>
+    <FullScreen>
+      <TopBar
+        left={header}
+        right={<>
+          {headerEnd}
+          {status && <small title={status} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{status}</small>}
         </>}
-        <span style={{ marginLeft: canEdit ? 10 : 0 }}>
-          <button onClick={() => zoomAtCenter(1 / 1.25)}>−</button>
-          <span style={{ display: 'inline-block', minWidth: 50, textAlign: 'center' }}>{Math.round(camera.scale * 100)}%</span>
-          <button onClick={() => zoomAtCenter(1.25)}>+</button>
-          <button onClick={() => setCamera(fitCamera(viewport.width, viewport.height, meta.width, meta.height))}>Fit</button>
-        </span>
-      </div>
-      <div className='d-flex gap-3 flex-wrap' style={{ marginTop: 10, alignItems: 'flex-start' }}>
-        <div
-          ref={containerRef}
-          style={{
-            border: '1px solid #aaa',
-            flex: '1 1 480px',
-            minWidth: 0,
-            height: '70vh',
-            minHeight: 400,
-            overflow: 'hidden',
-            touchAction: 'none',
-            cursor: activeTool === 'pan' ? 'grab' : 'crosshair',
-          }}
+      />
+      <div
+        ref={containerRef}
+        style={{
+          position: 'absolute',
+          top: TOPBAR_HEIGHT,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          overflow: 'hidden',
+          touchAction: 'none',
+          cursor: activeTool === 'pan' ? 'grab' : 'crosshair',
+        }}
+      >
+        <Stage
+          width={viewport.width}
+          height={viewport.height}
+          x={camera.x}
+          y={camera.y}
+          scaleX={camera.scale}
+          scaleY={camera.scale}
+          draggable={activeTool === 'pan'}
+          onDragMove={handleStageDrag}
+          onDragEnd={handleStageDrag}
+          onWheel={handleWheel}
+          onMouseDown={(e) => { clearSelection(e); startDraw(e); }}
+          onMousemove={draw}
+          onMouseup={endDraw}
+          onTouchStart={(e) => { clearSelection(e); startDraw(e); }}
+          onTouchMove={draw}
+          onTouchEnd={endDraw}
         >
-          <Stage
-            width={viewport.width}
-            height={viewport.height}
-            x={camera.x}
-            y={camera.y}
-            scaleX={camera.scale}
-            scaleY={camera.scale}
-            draggable={activeTool === 'pan'}
-            onDragMove={handleStageDrag}
-            onDragEnd={handleStageDrag}
-            onWheel={handleWheel}
-            onMouseDown={(e) => { clearSelection(e); startDraw(e); }}
-            onMousemove={draw}
-            onMouseup={endDraw}
-            onTouchStart={(e) => { clearSelection(e); startDraw(e); }}
-            onTouchMove={draw}
-            onTouchEnd={endDraw}
-          >
-            <Layer>
-              <Rect x={0} y={0} width={meta.width} height={meta.height} fill='rgba(255, 255, 255, 0.05)' stroke='#888' strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-              {bgImage && <KonvaImage image={bgImage} x={0} y={0} width={meta.width} height={meta.height} listening={false} />}
-              {/* Draw tokens last so drawings can never cover them. */}
-              {[...shapes].sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
-                const selected = s.id === selectedId;
-                const select = canEdit ? () => setSelectedId(s.id) : undefined;
-                if (s.type === 'rect') {
-                  return (
-                    <Rect
-                      key={s.id}
-                      {...s}
-                      draggable={canEdit}
-                      stroke={selected ? 'red' : undefined}
-                      strokeWidth={selected ? 3 : 0}
-                      onClick={select}
-                      onTap={select}
-                      onDragMove={e => handleDragMove(s.id, e)}
-                      onDragEnd={e => handleDragMove(s.id, e)}
-                    />
-                  );
-                }
-                if (s.type === 'token') {
-                  return (
-                    <Group
-                      key={s.id}
-                      x={s.x}
-                      y={s.y}
-                      draggable={canEdit}
-                      onClick={select}
-                      onTap={select}
-                      onDragMove={e => handleDragMove(s.id, e)}
-                      onDragEnd={e => handleDragMove(s.id, e)}
-                    >
-                      {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
-                      <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
-                      <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} />
-                      {/* The character's aspects in play, as tags beside the token. */}
-                      {tokenTags(s).map((tag, i) => (
-                        <Label key={i} x={26} y={-18 + i * 18} listening={false}>
-                          <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={0.5} cornerRadius={3} />
-                          <Text text={tag.freeInvokes > 0 ? `${tag.name} ${'●'.repeat(tag.freeInvokes)}` : tag.name} fontStyle='italic' fontSize={11} padding={3} fill='#222' />
-                        </Label>
-                      ))}
-                    </Group>
-                  );
-                }
+          <Layer>
+            <Rect x={0} y={0} width={meta.width} height={meta.height} fill='rgba(255, 255, 255, 0.05)' stroke='#888' strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+            {bgImage && <KonvaImage image={bgImage} x={0} y={0} width={meta.width} height={meta.height} listening={false} />}
+            {/* Draw tokens last so drawings can never cover them. */}
+            {[...shapes].sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
+              const selected = s.id === selectedId;
+              const select = canEdit ? () => setSelectedId(s.id) : undefined;
+              if (s.type === 'rect') {
                 return (
-                  <Line
+                  <Rect
                     key={s.id}
                     {...s}
-                    hitStrokeWidth={12}
-                    stroke={selected ? 'red' : s.stroke}
+                    draggable={canEdit}
+                    stroke={selected ? 'red' : undefined}
+                    strokeWidth={selected ? 3 : 0}
                     onClick={select}
                     onTap={select}
+                    onDragMove={e => handleDragMove(s.id, e)}
+                    onDragEnd={e => handleDragMove(s.id, e)}
                   />
                 );
-              })}
-            </Layer>
-          </Stage>
-        </div>
-        <div style={{ flex: '0 1 280px', minWidth: 220 }}>
-          <AspectsPanel
-            campaignShortname={campaignShortname}
-            aspects={aspects}
-            characters={characters}
-            sheetAspects={sheetAspects}
-            consequences={consequenceAspects}
-            canEdit={canEdit}
-            gm={gm}
-            onAdd={addAspect}
-            onUpdate={updateAspect}
-            onRemove={removeAspect}
-            onKeepOnSheet={keepOnSheet}
-            onEndScene={endScene}
+              }
+              if (s.type === 'token') {
+                return (
+                  <Group
+                    key={s.id}
+                    x={s.x}
+                    y={s.y}
+                    draggable={canEdit}
+                    onClick={select}
+                    onTap={select}
+                    onDragMove={e => handleDragMove(s.id, e)}
+                    onDragEnd={e => handleDragMove(s.id, e)}
+                  >
+                    {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
+                    <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
+                    <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} />
+                    {/* The character's aspects in play, as tags beside the token. */}
+                    {tokenTags(s).map((tag, i) => (
+                      <Label key={i} x={26} y={-18 + i * 18} listening={false}>
+                        <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={0.5} cornerRadius={3} />
+                        <Text text={tag.freeInvokes > 0 ? `${tag.name} ${'●'.repeat(tag.freeInvokes)}` : tag.name} fontStyle='italic' fontSize={11} padding={3} fill='#222' />
+                      </Label>
+                    ))}
+                  </Group>
+                );
+              }
+              return (
+                <Line
+                  key={s.id}
+                  {...s}
+                  hitStrokeWidth={12}
+                  stroke={selected ? 'red' : s.stroke}
+                  onClick={select}
+                  onTap={select}
+                />
+              );
+            })}
+          </Layer>
+        </Stage>
+      </div>
+
+      {/* The turn order floats over the top of the map, between the drawers' tabs. */}
+      <div style={{ position: 'absolute', top: `calc(${TOPBAR_HEIGHT} + 0.5rem)`, ...between, zIndex: 15, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div style={{ pointerEvents: 'auto', maxWidth: '100%', minWidth: 0 }}>
+          <CombatTracker
+            state={combat}
+            entries={combatEntries}
+            canRun={canEdit && gm}
+            canMarkStress={canEdit}
+            onToggleStress={toggleStress}
+            onSetConsequence={setConsequence}
+            onStart={startCombat}
+            onStep={direction => combat && setCombat(stepTurn(combat, presentTokens(), direction))}
+            onEnd={() => setCombat(null)}
+            onMove={(tokenId, direction) => combat && setCombat(moveInOrder(combat, tokenId, direction))}
+            onRemove={removeCombatant}
+            onAdd={tokenId => combat && setCombat({ ...combat, order: [...combat.order, tokenId], current: combat.current ?? tokenId })}
+            canPass={canEdit}
+            onPass={tokenId => combat && setCombat(passTurn(combat, tokenId))}
+            onNextRound={tokenId => combat && setCombat(startNextRound(combat, tokenId))}
+            onUndo={() => combat && setCombat(undoPass(combat))}
+            onSetCurrent={tokenId => combat && setCombat(setCurrent(combat, tokenId))}
           />
         </div>
       </div>
+
+      {/* Tools float along the bottom of the map. */}
+      <div style={{ position: 'absolute', bottom: '0.75rem', ...between, zIndex: 15, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div className='d-flex align-center gap-1 flex-wrap' style={{ ...panelStyle, pointerEvents: 'auto', padding: '0.35rem 0.5rem', justifyContent: 'center' }}>
+          {canEdit && <>
+            <button onClick={() => setTool('pan')} disabled={tool === 'pan'} title='Drag to move around the map, and to move tokens'>Pan</button>
+            <button onClick={() => setTool('draw')} disabled={tool === 'draw'} title='Drag to draw on the map'>Draw</button>
+            {divider}
+          </>}
+          <button onClick={() => zoomAtCenter(1 / 1.25)} aria-label='Zoom out'>−</button>
+          <span style={{ display: 'inline-block', minWidth: 44, textAlign: 'center' }}>{Math.round(camera.scale * 100)}%</span>
+          <button onClick={() => zoomAtCenter(1.25)} aria-label='Zoom in'>+</button>
+          <button onClick={() => setCamera(fitCamera(viewport.width, viewport.height, meta.width, meta.height))}>Fit</button>
+          {canEdit && <>
+            {divider}
+            <select value={tokenPick} onChange={({ target }) => setTokenPick(target.value)} aria-label='Character to add a token for' style={{ maxWidth: '12rem' }}>
+              <option value=''>Add a token…</option>
+              {tokenCandidates.map(item => (
+                <option key={item.shortname} value={item.shortname}>{item.title}</option>
+              ))}
+            </select>
+            <button onClick={addToken} disabled={!tokenPick}>Add</button>
+            <button onClick={addRect}>Rectangle</button>
+            <button onClick={deleteSelected} disabled={!selectedId} title='Delete the selected token or shape (Delete key)'>Delete</button>
+          </>}
+          {canEdit && gm && <>
+            {divider}
+            <button onClick={() => backgroundInput.current?.click()} disabled={uploading}>
+              {uploading ? 'Uploading…' : meta.imageStamp !== null ? 'Change background' : 'Set background'}
+            </button>
+            <input
+              ref={backgroundInput}
+              type='file'
+              accept='image/*'
+              aria-label='Background image'
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadImage(file);
+                e.target.value = '';
+              }}
+            />
+            {meta.imageStamp !== null && <button onClick={removeBackground} disabled={uploading}>Remove background</button>}
+          </>}
+        </div>
+      </div>
+
+      <SideDrawer title='Aspects' side='left' storageKey='fate.aspectsDrawerOpen' defaultOpen={window.innerWidth >= 900} onOpenChange={setAspectsOpen}>
+        <AspectsPanel
+          campaignShortname={campaignShortname}
+          aspects={aspects}
+          characters={characters}
+          sheetAspects={sheetAspects}
+          consequences={consequenceAspects}
+          canEdit={canEdit}
+          gm={gm}
+          onAdd={addAspect}
+          onUpdate={updateAspect}
+          onRemove={removeAspect}
+          onKeepOnSheet={keepOnSheet}
+          onEndScene={endScene}
+        />
+      </SideDrawer>
       <DiceRoller
         rolls={table.rolls.slice(0, 20)}
         characters={characters}
@@ -1114,7 +1154,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         onRoll={addRoll}
         onInvoke={invokeOnRoll}
         journal={<Journal table={table} />}
+        onOpenChange={setDiceOpen}
       />
-    </div>
+    </FullScreen>
   );
 }
