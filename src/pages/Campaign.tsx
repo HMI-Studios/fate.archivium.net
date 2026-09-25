@@ -61,6 +61,7 @@ export default function Campaign(props) {
     <h1>{campaign.title}</h1>
     <div className='d-flex gap-3 flex-wrap'>
       <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/play`}>Enter the game room</Link>
+      <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/journal`}>Journal</Link>
       <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/players`}>Players</Link>
       {isGameMaster(campaign, user) && <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/settings`}>Settings</Link>}
       <a className='link link-animated' href={archiviumUniverseUrl(campaign.shortname)}>Open in Archivium</a>

@@ -5,6 +5,7 @@ import Campaign from './pages/Campaign';
 import CampaignSettings from './pages/CampaignSettings';
 import JoinCampaign from './pages/JoinCampaign';
 import Players from './pages/Players';
+import JournalPage from './pages/JournalPage';
 import Character from './pages/Character';
 import Home from './pages/Home';
 import NewCampaign from './pages/NewCampaign';
@@ -56,6 +57,7 @@ export default function App() {
           <Route path=':campaignShortname/play' element={<Room user={user} />} />
           <Route path=':campaignShortname/settings' element={<CampaignSettings user={user} />} />
           <Route path=':campaignShortname/players' element={<Players user={user} />} />
+          <Route path=':campaignShortname/journal' element={<JournalPage user={user} />} />
           <Route path=':campaignShortname/join' element={<JoinCampaign user={user} />} />
           <Route path=':campaignShortname/items/new' element={<NewItem />} />
           <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />

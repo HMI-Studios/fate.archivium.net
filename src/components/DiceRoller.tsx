@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { diceTotal, FATE_SKILLS, isBonus, ladderLabel, rollTotal, signed, type FateDie, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import type { SceneCharacter } from './AspectsPanel';
 import SideDrawer from './SideDrawer';
@@ -22,7 +22,11 @@ interface Props {
   canRoll: boolean;
   onRoll: (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => void;
   onInvoke: (rollId: string, aspectId: string, effect: InvokeEffect) => void;
+  // Shown on the drawer's Journal tab.
+  journal: ReactNode;
 }
+
+const tabStyle = (selected: boolean) => ({ fontWeight: selected ? 'bold' : undefined, opacity: selected ? 1 : 0.7 });
 
 const FACES: { [die: number]: string } = { [-1]: '−', 0: '', 1: '+' };
 
@@ -119,17 +123,20 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
   );
 }
 
-export default function DiceRoller({ rolls, characters, skills, fatePoints, aspects, canRoll, onRoll, onInvoke }: Props) {
+export default function DiceRoller({ rolls, characters, skills, fatePoints, aspects, canRoll, onRoll, onInvoke, journal }: Props) {
   const [character, setCharacter] = useState('');
   const [skill, setSkill] = useState('');
   const [modifier, setModifier] = useState(0);
 
-  // Rolls made while the drawer was closed are counted on its tab.
+  const [tab, setTab] = useState<'dice' | 'journal'>('dice');
+
+  // Rolls made while the dice weren't showing are counted on the drawer's tab.
   const [open, setOpen] = useState(true);
+  const showingDice = open && tab === 'dice';
   const seenUntil = useRef(0);
   const newest = rolls[0]?.at ?? 0;
-  if (open && newest > seenUntil.current) seenUntil.current = newest;
-  const unseen = open ? 0 : rolls.filter(r => r.at > seenUntil.current).length;
+  if (showingDice && newest > seenUntil.current) seenUntil.current = newest;
+  const unseen = showingDice ? 0 : rolls.filter(r => r.at > seenUntil.current).length;
 
   const chosen = characters.find(c => c.key === character);
   const ratings = chosen ? skills[chosen.key] ?? {} : {};
@@ -144,9 +151,14 @@ export default function DiceRoller({ rolls, characters, skills, fatePoints, aspe
   });
 
   return (
-    <SideDrawer title='Dice' storageKey='fate.diceDrawerOpen' badge={unseen} onOpenChange={setOpen}>
-      <div className='d-flex flex-col gap-2'>
-        <h3 className='ma-0'>Dice</h3>
+    <SideDrawer title='Dice & journal' storageKey='fate.diceDrawerOpen' badge={unseen} onOpenChange={setOpen}>
+      <div className='d-flex gap-1 mb-2' role='tablist'>
+        <button role='tab' aria-selected={tab === 'dice'} style={tabStyle(tab === 'dice')} onClick={() => setTab('dice')}>
+          Dice{tab !== 'dice' && unseen ? ` (${unseen})` : ''}
+        </button>
+        <button role='tab' aria-selected={tab === 'journal'} style={tabStyle(tab === 'journal')} onClick={() => setTab('journal')}>Journal</button>
+      </div>
+      {tab === 'journal' ? journal : <div className='d-flex flex-col gap-2'>
         {canRoll && (
           <form className='d-flex flex-col gap-1' onSubmit={e => { e.preventDefault(); roll(); }}>
             <div className='d-flex gap-1 flex-wrap'>
@@ -185,7 +197,7 @@ export default function DiceRoller({ rolls, characters, skills, fatePoints, aspe
             />
           ))}
         </ul>
-      </div>
+      </div>}
     </SideDrawer>
   );
 }

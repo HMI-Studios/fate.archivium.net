@@ -34,8 +34,8 @@ export type Roll = {
   invokes: RollInvoke[];
 };
 
-// How many rolls a scene keeps.
-export const ROLL_LOG_SIZE = 30;
+// How many rolls the campaign's dice log keeps (live and saved).
+export const ROLL_LOG_SIZE = 100;
 
 export function rollFateDice(): FateDie[] {
   const values = new Uint32Array(4);

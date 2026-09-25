@@ -20,6 +20,7 @@ import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
 import CombatTracker, { type CombatEntry } from './CombatTracker';
 import DiceRoller, { type InvokableAspect } from './DiceRoller';
+import Journal from './Journal';
 
 export type BaseShape = {
   id: string;
@@ -181,9 +182,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const yShapes = ydoc?.getMap<Shape>('shapes');
   const yMeta = ydoc?.getMap<SceneMeta[keyof SceneMeta]>('meta');
   const yAspects = ydoc?.getMap<SceneAspect>('aspects');
-  // Recent dice rolls. Live only: they aren't saved to the scene item.
   // The dice log is campaign-wide, kept in the table doc rather than the scene's.
-  const table = useTable(campaignShortname);
+  const table = useTable(campaignShortname, gm);
   const yRolls = table.writableRolls;
   // The conflict's turn order, if one is running (key `state`).
   const yCombat = ydoc?.getMap<CombatState>('combat');
@@ -1059,7 +1059,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         </div>
       </div>
       <DiceRoller
-        rolls={table.rolls.slice(0, 10)}
+        rolls={table.rolls.slice(0, 20)}
         characters={characters}
         skills={Object.fromEntries(characters.map(c => [c.key, skillRatings(actorSheet(c.key))]))}
         fatePoints={Object.fromEntries(characters.filter(c => actorSheet(c.key)).map(c => [c.key, fatePoints(actorSheet(c.key))]))}
@@ -1067,6 +1067,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
         canRoll={Boolean(yRolls)}
         onRoll={addRoll}
         onInvoke={invokeOnRoll}
+        journal={<Journal table={table} />}
       />
     </div>
   );

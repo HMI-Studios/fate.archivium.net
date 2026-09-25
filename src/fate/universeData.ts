@@ -2,6 +2,7 @@ import type { TabLayout } from '../layout/core';
 import type { TypeConfigs } from '../layout/typeConfig';
 import { FATE_CORE_LAYOUT, FATE_CORE_LAYOUT_ID } from './coreLayout';
 import { FATE_SCENE_LAYOUT, FATE_SCENE_LAYOUT_ID } from './sceneLayout';
+import { FATE_TABLE_LAYOUT, FATE_TABLE_LAYOUT_ID } from './tableLayout';
 
 // Character-like categories that get the Fate Core sheet.
 export const FATE_SHEET_CATEGORIES = ['pc', 'npc', 'monster'];
@@ -15,6 +16,8 @@ export const FATE_UNIVERSE_DATA: { tabTypes: { [id: string]: TabLayout }, typeCo
   tabTypes: {
     [FATE_CORE_LAYOUT_ID]: FATE_CORE_LAYOUT,
     [FATE_SCENE_LAYOUT_ID]: FATE_SCENE_LAYOUT,
+    // Not listed for any item type; only the Table Notes item has data for it.
+    [FATE_TABLE_LAYOUT_ID]: FATE_TABLE_LAYOUT,
   },
   typeConfigs: {
     ...Object.fromEntries(FATE_SHEET_CATEGORIES.map(category => [category, { tabTypes: [FATE_CORE_LAYOUT_ID] }])),
