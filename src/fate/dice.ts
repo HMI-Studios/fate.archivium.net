@@ -12,12 +12,21 @@ export type InvokeEffect = 'bonus' | 'reroll';
 
 export type RollInvoke = {
   aspect: string;
+  // The invoked aspect's id (see InvokableAspect); older invokes only have its name.
+  aspectId?: string;
   paidWith: 'free invoke' | 'fate point';
   // Invokes from before rerolls existed have no effect: they were all +2.
   effect?: InvokeEffect;
   // For a reroll, the dice it replaced.
   previousDice?: FateDie[];
 };
+
+// An aspect can only be invoked once per roll for a fate point, though any number of
+// its free invokes can be used on it (Fate Core).
+export function paidInvokeUsed(roll: Pick<Roll, 'invokes'>, aspect: { id: string, name: string }): boolean {
+  return roll.invokes.some(invoke => invoke.paidWith === 'fate point'
+    && (invoke.aspectId ? invoke.aspectId === aspect.id : invoke.aspect === aspect.name));
+}
 
 export type Roll = {
   id: string;

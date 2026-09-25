@@ -8,7 +8,7 @@ import { initiativeOrder, modeOf, moveInOrder, passTurn, setCurrent, startNextRo
 import { fetchSettings, type TurnOrderMode } from '../fate/settings';
 import { useTable } from '../fate/table';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
-import { fatePoints, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
+import { fatePoints, paidInvokeUsed, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
 import { glass, GLASS, hasBackdrop, useTheme } from '../theme';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
@@ -856,6 +856,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const roll = yRolls?.get(rollId);
     const aspect = invokableAspects.find(a => a.id === aspectId);
     if (!yRolls || !roll || !aspect) return;
+    if (aspect.freeInvokes === 0 && paidInvokeUsed(roll, aspect)) return;
 
     let paidWith: RollInvoke['paidWith'] = 'fate point';
     if (aspect.freeInvokes > 0) {
@@ -885,8 +886,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     }
     const latest = yRolls.get(rollId) ?? roll;
     const invoke: RollInvoke = effect === 'reroll'
-      ? { aspect: aspect.name, paidWith, effect, previousDice: latest.dice }
-      : { aspect: aspect.name, paidWith, effect };
+      ? { aspect: aspect.name, aspectId: aspect.id, paidWith, effect, previousDice: latest.dice }
+      : { aspect: aspect.name, aspectId: aspect.id, paidWith, effect };
     yRolls.set(rollId, {
       ...latest,
       ...(effect === 'reroll' ? { dice: rollFateDice() } : {}),
