@@ -3,6 +3,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { Link, useParams, useSearchParams } from 'react-router';
 import Breadcrumbs, { archiviumUniverseUrl } from '../components/Breadcrumbs';
 import CampaignStunts from '../components/CampaignStunts';
+import CharacterCards from '../components/CharacterCards';
 import { isGameMaster, PERMS } from '../perms';
 
 export type Campaign = {
@@ -121,13 +122,21 @@ export default function Campaign(props) {
         ? <CampaignStunts campaign={campaign.shortname} universeObjData={campaign.obj_data} canCreate={canWrite} />
         : <>
           {selectedTab.newLabel && (selectedTab.key !== 'maps' || canWrite) && (
-            <Link className='link link-animated ml-2' to={selectedTab.newPath!(campaign.shortname)}>{selectedTab.newLabel}</Link>
+            <div className='mb-2'>
+              <Link className='link link-animated ml-2' to={selectedTab.newPath!(campaign.shortname)}>{selectedTab.newLabel}</Link>
+            </div>
           )}
-          <ul>
-            {items.filter(item => item.item_type === selectedTab.itemType).map(item => (<li key={item.shortname}>
-              <Link className='link link-animated' to={selectedTab.itemPath!(campaign.shortname, item.shortname)}>{item.title}</Link>
-            </li>))}
-          </ul>
+          {selectedTab.itemPath === characterPath
+            ? <CharacterCards
+              campaign={campaign.shortname}
+              items={items.filter(item => item.item_type === selectedTab.itemType)}
+              color={campaign.obj_data?.cats?.[selectedTab.itemType!]?.[2]}
+            />
+            : <ul>
+              {items.filter(item => item.item_type === selectedTab.itemType).map(item => (<li key={item.shortname}>
+                <Link className='link link-animated' to={selectedTab.itemPath!(campaign.shortname, item.shortname)}>{item.title}</Link>
+              </li>))}
+            </ul>}
         </>}
     </div>
   </>;
