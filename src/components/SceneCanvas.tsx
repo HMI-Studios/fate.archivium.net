@@ -40,6 +40,9 @@ export type RectShape = BaseShape & {
 
 export type LineShape = BaseShape & {
   type: 'line';
+  // Where the points are drawn from, once the line has been moved (0, 0 until then).
+  x?: number;
+  y?: number;
   points: number[];
   stroke: string;
   strokeWidth: number;
@@ -59,6 +62,46 @@ export type TokenShape = BaseShape & {
 };
 
 export type Shape = RectShape | LineShape | TokenShape;
+
+type Point = { x: number, y: number };
+
+const shapePosition = (shape: Shape): Point => ({ x: shape.x ?? 0, y: shape.y ?? 0 });
+
+// Tools for the map. Pan also moves things; Select drags out a box to select what it touches.
+type Tool = 'pan' | 'select' | 'draw' | 'erase';
+
+const TOOLS: { tool: Tool, label: string, hint: string }[] = [
+  { tool: 'pan', label: 'Pan', hint: 'Drag to move around the map, and to move tokens and shapes. Shift- or Ctrl-click to select several.' },
+  { tool: 'select', label: 'Select', hint: 'Drag a box to select everything it touches (hold Shift to add to the selection), then drag any of it to move it all' },
+  { tool: 'draw', label: 'Draw', hint: 'Drag to draw on the map' },
+  { tool: 'erase', label: 'Erase', hint: 'Drag over drawn lines to erase them' },
+];
+
+const TOOL_CURSORS: { [tool in Tool]: string } = { pan: 'grab', select: 'default', draw: 'crosshair', erase: 'cell' };
+
+// The eraser's reach, and how far apart it checks along a fast stroke, in screen pixels.
+const ERASER_RADIUS = 8;
+const ERASER_STEP = 4;
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = dx * dx + dy * dy;
+  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+// Whether any part of a drawn line comes within `reach` of a point (map coordinates).
+function lineNear(line: LineShape, p: Point, reach: number): boolean {
+  const { x, y } = shapePosition(line);
+  const at = (i: number) => ({ x: x + line.points[i], y: y + line.points[i + 1] });
+  const within = reach + line.strokeWidth / 2;
+  if (line.points.length < 4) return line.points.length === 2 && Math.hypot(p.x - at(0).x, p.y - at(0).y) <= within;
+  for (let i = 0; i + 3 < line.points.length; i += 2) {
+    if (distanceToSegment(p, at(i), at(i + 2)) <= within) return true;
+  }
+  return false;
+}
 
 type MapItem = {
   shortname: string;
@@ -163,7 +206,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // Sheet data of the characters in the scene, for their temporary aspects, skills and fate points.
   const [sheets, setSheets] = useState<{ [shortname: string]: Record<string, unknown> }>({});
   const [drawing, setDrawing] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // A selection box being dragged out, in map coordinates.
+  const [marquee, setMarquee] = useState<{ from: Point, to: Point, additive: boolean } | null>(null);
 
   const [meta, setMeta] = useState<SceneMeta>({ width: 1000, height: 1000, imageStamp: null });
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
@@ -174,7 +219,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   const [turnOrder, setTurnOrder] = useState<TurnOrderMode>('initiative');
   const [tokenPick, setTokenPick] = useState('');
 
-  const [tool, setTool] = useState<'pan' | 'draw'>('pan');
+  const [tool, setTool] = useState<Tool>('pan');
+  // The shapes being dragged together, with where each started.
+  const dragGroup = useRef<{ [id: string]: Point } | null>(null);
+  // While erasing, where the pointer last was (map coordinates).
+  const eraserAt = useRef<Point | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const backgroundInput = useRef<HTMLInputElement | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -356,11 +405,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
-        deleteSelected();
-      }
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length) deleteSelected();
+      if (e.key === 'Escape') setSelectedIds([]);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -742,14 +790,16 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
 
   const deleteSelected = () => {
     const target = writableShapes();
-    if (!selectedId || !target || !ydoc) return;
+    if (!selection.length || !target || !ydoc) return;
     ydoc.transact(() => {
-      target.delete(selectedId);
-      // A token's scene-scoped state and aspects go with it.
-      yTokenStates?.delete(selectedId);
-      aspects.filter(a => a.target === tokenActorKey(selectedId)).forEach(a => yAspects?.delete(a.id));
+      for (const id of selection) {
+        target.delete(id);
+        // A token's scene-scoped state and aspects go with it.
+        yTokenStates?.delete(id);
+        aspects.filter(a => a.target === tokenActorKey(id)).forEach(a => yAspects?.delete(a.id));
+      }
     });
-    setSelectedId(null);
+    setSelectedIds([]);
   };
 
   // Center of the visible area, in map coordinates.
@@ -797,19 +847,84 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     target.set(token.id, token);
   };
 
-  const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+  // Dragging something selected moves the whole selection with it; dragging anything
+  // else selects just that.
+  const handleDragStart = (id: string) => {
     const target = writableShapes();
     if (!target) return;
-    const node = e.target;
-    const shape = target.get(id);
-    if (!shape) return;
+    const ids = selection.includes(id) ? selection : [id];
+    if (!selection.includes(id)) setSelectedIds([id]);
+    dragGroup.current = Object.fromEntries(ids.flatMap(sid => {
+      const shape = target.get(sid);
+      return shape ? [[sid, shapePosition(shape)]] : [];
+    }));
+  };
 
-    const updated: Shape =
-      shape.type === 'rect' || shape.type === 'token'
-        ? { ...shape, x: node.x(), y: node.y() }
-        : shape;
+  const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+    const target = writableShapes();
+    const group = dragGroup.current;
+    if (!target || !ydoc || !group?.[id]) return;
+    const dx = e.target.x() - group[id].x;
+    const dy = e.target.y() - group[id].y;
+    ydoc.transact(() => {
+      for (const [sid, start] of Object.entries(group)) {
+        const shape = target.get(sid);
+        if (shape) target.set(sid, { ...shape, x: start.x + dx, y: start.y + dy });
+      }
+    });
+  };
 
-    target.set(id, updated);
+  const handleDragEnd = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+    handleDragMove(id, e);
+    dragGroup.current = null;
+  };
+
+  // Shift/Ctrl/Cmd-click adds to or takes from the selection.
+  const selectShape = (id: string, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (!canEdit || activeTool === 'erase') return;
+    if (e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey) {
+      setSelectedIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
+    } else {
+      setSelectedIds([id]);
+    }
+  };
+
+  // Erases every drawn line near the pointer's path since it was last checked, stepping
+  // along it so a quick stroke doesn't skip lines. Lines under tokens are erased too.
+  const eraseAlong = (stage: Konva.Stage) => {
+    const target = writableShapes();
+    const to = stage.getRelativePointerPosition();
+    if (!target || !ydoc || !to) return;
+    const from = eraserAt.current ?? to;
+    eraserAt.current = to;
+    const step = ERASER_STEP / camera.scale;
+    const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / step));
+    const samples = Array.from({ length: steps + 1 }, (_, i) => ({ x: from.x + (to.x - from.x) * i / steps, y: from.y + (to.y - from.y) * i / steps }));
+    const reach = ERASER_RADIUS / camera.scale;
+    const hits = new Set<string>();
+    for (const shape of shapes) {
+      if (shape.type === 'line' && samples.some(p => lineNear(shape, p, reach))) hits.add(shape.id);
+    }
+    if (!hits.size) return;
+    ydoc.transact(() => hits.forEach(id => target.delete(id)));
+    setSelectedIds(ids => ids.filter(id => !hits.has(id)));
+  };
+
+  // Selects what the finished selection box touches.
+  const finishMarquee = (stage: Konva.Stage) => {
+    const box = marquee;
+    setMarquee(null);
+    if (!box) return;
+    // In screen coordinates, as Konva measures shapes.
+    const rect = {
+      x: Math.min(box.from.x, box.to.x) * camera.scale + camera.x,
+      y: Math.min(box.from.y, box.to.y) * camera.scale + camera.y,
+      width: Math.abs(box.to.x - box.from.x) * camera.scale,
+      height: Math.abs(box.to.y - box.from.y) * camera.scale,
+    };
+    if (rect.width < 3 && rect.height < 3) return;
+    const hits = stage.find('.shape').filter(node => Konva.Util.haveIntersection(rect, node.getClientRect())).map(node => node.id());
+    setSelectedIds(ids => box.additive ? [...new Set([...ids, ...hits])] : hits);
   };
 
   const startDraw = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -932,13 +1047,44 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
     setCamera(cam => ({ ...cam, x: stage.x(), y: stage.y() }));
   };
 
-  const clearSelection = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    if (e.target === e.target.getStage()) {
-      setSelectedId(null);
+  const activeTool: Tool = canEdit ? tool : 'pan';
+  // Selected shapes that still exist (someone else may have deleted one).
+  const selection = selectedIds.filter(id => shapes.some(shape => shape.id === id));
+  const canMove = canEdit && (activeTool === 'pan' || activeTool === 'select');
+
+  const pointerDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    const stage = e.target.getStage()!;
+    const onEmpty = e.target === stage;
+    const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+    if (activeTool === 'erase') {
+      eraserAt.current = null;
+      eraseAlong(stage);
+      return;
+    }
+    if (!onEmpty) return;
+    if (!additive) setSelectedIds([]);
+    if (activeTool === 'select') {
+      const at = stage.getRelativePointerPosition();
+      if (at) setMarquee({ from: at, to: at, additive });
+    }
+    startDraw(e);
+  };
+
+  const pointerMove = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    const stage = e.target.getStage()!;
+    draw(e);
+    if (eraserAt.current) eraseAlong(stage);
+    if (marquee) {
+      const at = stage.getRelativePointerPosition();
+      if (at) setMarquee({ ...marquee, to: at });
     }
   };
 
-  const activeTool = canEdit ? tool : 'pan';
+  const pointerUp = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    endDraw();
+    eraserAt.current = null;
+    if (marquee) finishMarquee(e.target.getStage()!);
+  };
 
   const status = doc?.status === 'connecting' ? 'Connecting…'
     : doc?.status === 'offline' ? 'Offline: last saved version, read-only'
@@ -948,9 +1094,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
   // Floating panels sit between the drawers, clear of their tabs.
   const [aspectsOpen, setAspectsOpen] = useState(false);
   const [diceOpen, setDiceOpen] = useState(false);
-  const between = {
+  // When the drawers leave too little room between them, the panels span the window
+  // over them instead.
+  const drawerPx = Math.min(22 * 16, 0.92 * viewport.width);
+  const crowded = viewport.width - drawerPx * (Number(aspectsOpen) + Number(diceOpen)) < 480;
+  const between = crowded ? { left: '0.5rem', right: '0.5rem', zIndex: 21 } : {
     left: aspectsOpen ? `calc(${DRAWER_WIDTH} + 2.5rem)` : '3rem',
     right: diceOpen ? `calc(${DRAWER_WIDTH} + 2.5rem)` : '3rem',
+    zIndex: 15,
   };
 
   const divider = <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--menu-border-color, #6e6e6e)' }} />;
@@ -974,7 +1125,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
           bottom: 0,
           overflow: 'hidden',
           touchAction: 'none',
-          cursor: activeTool === 'pan' ? 'grab' : 'crosshair',
+          cursor: TOOL_CURSORS[activeTool],
         }}
       >
         <Stage
@@ -988,32 +1139,38 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
           onDragMove={handleStageDrag}
           onDragEnd={handleStageDrag}
           onWheel={handleWheel}
-          onMouseDown={(e) => { clearSelection(e); startDraw(e); }}
-          onMousemove={draw}
-          onMouseup={endDraw}
-          onTouchStart={(e) => { clearSelection(e); startDraw(e); }}
-          onTouchMove={draw}
-          onTouchEnd={endDraw}
+          onMouseDown={pointerDown}
+          onMousemove={pointerMove}
+          onMouseup={pointerUp}
+          onMouseleave={pointerUp}
+          onTouchStart={pointerDown}
+          onTouchMove={pointerMove}
+          onTouchEnd={pointerUp}
         >
           <Layer>
             <Rect x={0} y={0} width={meta.width} height={meta.height} fill='rgba(255, 255, 255, 0.05)' stroke='#888' strokeWidth={1} strokeScaleEnabled={false} listening={false} />
             {bgImage && <KonvaImage image={bgImage} x={0} y={0} width={meta.width} height={meta.height} listening={false} />}
             {/* Draw tokens last so drawings can never cover them. */}
             {[...shapes].sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
-              const selected = s.id === selectedId;
-              const select = canEdit ? () => setSelectedId(s.id) : undefined;
+              const selected = selection.includes(s.id);
+              const select = canEdit ? (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectShape(s.id, e) : undefined;
+              const dragProps = {
+                onDragStart: () => handleDragStart(s.id),
+                onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => handleDragMove(s.id, e),
+                onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(s.id, e),
+              };
               if (s.type === 'rect') {
                 return (
                   <Rect
                     key={s.id}
                     {...s}
-                    draggable={canEdit}
+                    name='shape'
+                    draggable={canMove}
                     stroke={selected ? 'red' : undefined}
                     strokeWidth={selected ? 3 : 0}
                     onClick={select}
                     onTap={select}
-                    onDragMove={e => handleDragMove(s.id, e)}
-                    onDragEnd={e => handleDragMove(s.id, e)}
+                    {...dragProps}
                   />
                 );
               }
@@ -1021,13 +1178,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                 return (
                   <Group
                     key={s.id}
+                    id={s.id}
+                    name='shape'
                     x={s.x}
                     y={s.y}
-                    draggable={canEdit}
+                    draggable={canMove}
                     onClick={select}
                     onTap={select}
-                    onDragMove={e => handleDragMove(s.id, e)}
-                    onDragEnd={e => handleDragMove(s.id, e)}
+                    {...dragProps}
                   >
                     {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
                     <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
@@ -1046,19 +1204,35 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
                 <Line
                   key={s.id}
                   {...s}
+                  name='shape line'
                   hitStrokeWidth={12}
                   stroke={selected ? 'red' : s.stroke}
+                  // Only selected lines move, so a drag across the map pans instead of catching one.
+                  draggable={canMove && selected}
                   onClick={select}
                   onTap={select}
+                  {...dragProps}
                 />
               );
             })}
+            {marquee && <Rect
+              x={Math.min(marquee.from.x, marquee.to.x)}
+              y={Math.min(marquee.from.y, marquee.to.y)}
+              width={Math.abs(marquee.to.x - marquee.from.x)}
+              height={Math.abs(marquee.to.y - marquee.from.y)}
+              fill='rgba(70, 130, 180, 0.15)'
+              stroke='#4682B4'
+              strokeWidth={1}
+              dash={[4, 4]}
+              strokeScaleEnabled={false}
+              listening={false}
+            />}
           </Layer>
         </Stage>
       </div>
 
       {/* The turn order floats over the top of the map, between the drawers' tabs. */}
-      <div style={{ position: 'absolute', top: `calc(${TOPBAR_HEIGHT} + 0.5rem)`, ...between, zIndex: 15, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', top: `calc(${TOPBAR_HEIGHT} + 0.5rem)`, ...between, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <div style={{ pointerEvents: 'auto', maxWidth: '100%', minWidth: 0 }}>
           <CombatTracker
             state={combat}
@@ -1083,11 +1257,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
       </div>
 
       {/* Tools float along the bottom of the map. */}
-      <div style={{ position: 'absolute', bottom: '0.75rem', ...between, zIndex: 15, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', bottom: '0.75rem', ...between, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <div className='d-flex align-center gap-1 flex-wrap' style={{ ...panelStyle, pointerEvents: 'auto', padding: '0.35rem 0.5rem', justifyContent: 'center' }}>
           {canEdit && <>
-            <button onClick={() => setTool('pan')} disabled={tool === 'pan'} title='Drag to move around the map, and to move tokens'>Pan</button>
-            <button onClick={() => setTool('draw')} disabled={tool === 'draw'} title='Drag to draw on the map'>Draw</button>
+            {TOOLS.map(t => <button key={t.tool} onClick={() => setTool(t.tool)} disabled={tool === t.tool} title={t.hint}>{t.label}</button>)}
             {divider}
           </>}
           <button onClick={() => zoomAtCenter(1 / 1.25)} aria-label='Zoom out'>−</button>
@@ -1104,7 +1277,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = tr
             </select>
             <button onClick={addToken} disabled={!tokenPick}>Add</button>
             <button onClick={addRect}>Rectangle</button>
-            <button onClick={deleteSelected} disabled={!selectedId} title='Delete the selected token or shape (Delete key)'>Delete</button>
+            <button onClick={deleteSelected} disabled={!selection.length} title='Delete what’s selected (Delete key; Esc to deselect)'>
+              Delete{selection.length > 1 ? ` ${selection.length}` : ''}
+            </button>
           </>}
           {canEdit && gm && <>
             {divider}
