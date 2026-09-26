@@ -89,7 +89,7 @@ export default function App() {
             <Route path=':campaignShortname/journal' element={<JournalPage user={user} />} />
             <Route path=':campaignShortname/join' element={<JoinCampaign user={user} />} />
             <Route path=':campaignShortname/items/new' element={<NewItem />} />
-            <Route path=':campaignShortname/characters/:characterShortname' element={<Character />} />
+            <Route path=':campaignShortname/characters/:characterShortname' element={<Character user={user} />} />
             <Route path=':campaignShortname/maps/new' element={<NewItem fixedType='location' />} />
           </Route>
         </Route>

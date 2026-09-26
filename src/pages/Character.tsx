@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { portraitOf, withPortrait, type GalleryImage } from '../fate/portrait';
 import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
+import PersonalNotes from '../components/PersonalNotes';
+import { panelStyle } from '../components/PlayLayout';
 import PortraitSlot from '../components/PortraitSlot';
 import StuntList from '../components/StuntList';
 import TakeHitDialog from '../components/TakeHitDialog';
@@ -23,7 +26,17 @@ function parseObjData(objData: unknown): any {
   return typeof objData === 'string' ? JSON.parse(objData) : objData;
 }
 
-export default function Character() {
+// Whether the notes panel was left open, per browser.
+const NOTES_OPEN_KEY = 'fate.sheetNotesOpen';
+function readNotesOpen(): boolean {
+  try {
+    return window.localStorage.getItem(NOTES_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export default function Character({ user }: { user: any }) {
   const { campaignShortname, characterShortname } = useParams();
   const [title, setTitle] = useState<string | null>(null);
   const [layout, setLayout] = useState<TabLayout | null>(null);
@@ -34,6 +47,15 @@ export default function Character() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [takingHit, setTakingHit] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(() => readNotesOpen());
+  const toggleNotes = (open: boolean) => {
+    setNotesOpen(open);
+    try {
+      window.localStorage.setItem(NOTES_OPEN_KEY, open ? '1' : '0');
+    } catch {
+      // Not remembering is fine.
+    }
+  };
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
   const [hasGalleryTab, setHasGalleryTab] = useState(false);
   // The sheet data as last loaded or saved, to work out what the user changed.
@@ -124,7 +146,8 @@ export default function Character() {
       </span>
     </div>
     {/* Sheet layouts have no image field, so the portrait sits beside the sheet in this app only. */}
-    {campaignShortname && characterShortname && <PortraitSlot
+    {campaignShortname && characterShortname && <div className='d-flex justify-between align-start gap-3'>
+      <div style={{ flex: '1 1 auto', minWidth: 0 }}><PortraitSlot
       campaignShortname={campaignShortname}
       characterShortname={characterShortname}
       title={title}
@@ -140,7 +163,9 @@ export default function Character() {
         setGallery(next);
         setHasGalleryTab(true);
       }}
-    />}
+      /></div>
+      <button type='button' aria-pressed={notesOpen} onClick={() => toggleNotes(!notesOpen)} title='Your own notes on this character, which only you can see'>My notes</button>
+    </div>}
     <LayoutTabEditor
       layout={layout}
       data={data}
@@ -190,6 +215,22 @@ export default function Character() {
         />;
       }}
     />
+    {/* Floats over the sheet, so it stays in view while scrolling through it (outside
+        the page's glass pane, whose blur would otherwise pin it to the pane). */}
+    {notesOpen && campaignShortname && characterShortname && createPortal(<div style={{
+      ...panelStyle,
+      position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 30,
+      width: 'min(24rem, calc(100vw - 2rem))', padding: '0.75rem', boxSizing: 'border-box',
+    }}>
+      <PersonalNotes
+        campaign={campaignShortname}
+        item={characterShortname}
+        itemTitle={title}
+        user={user}
+        rows={10}
+        onClose={() => toggleNotes(false)}
+      />
+    </div>, document.body)}
     {takingHit && <TakeHitDialog
       label={title}
       stress={stressTracks(data)}
