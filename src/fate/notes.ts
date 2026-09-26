@@ -1,5 +1,5 @@
 import { ARCHIVIUM_URL } from '../App';
-import { asBody, bodyFromText, isPlainBody, textFromBody } from './body';
+import { asBody, type Body } from './body';
 
 // Personal notes on a character, NPC or monster are the user's own private Archivium
 // note linked to its item: nobody else can see a private note, the GM included, and it
@@ -25,10 +25,8 @@ type ApiNote = {
 export type PersonalNote = {
   uuid: string | null,
   title: string,
-  text: string,
-  // False when the note has formatting (from Archivium's editor) that editing it here
-  // as plain text would lose.
-  plain: boolean,
+  // Rich text, edited with Archivium's own editor.
+  body: Body | null,
   items: NoteItem[],
 };
 
@@ -47,26 +45,29 @@ export async function loadPersonalNote(campaign: string, item: string, itemTitle
     .filter(note => note.author_id === user.id && !note.is_public)
     .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
   if (!mine) {
-    return { uuid: null, title: `Notes on ${itemTitle}`.slice(0, 64), text: '', plain: true, items: [[itemTitle, item, '', campaign]] };
+    return { uuid: null, title: `Notes on ${itemTitle}`.slice(0, 64), body: null, items: [[itemTitle, item, '', campaign]] };
   }
 
   // The list only has the start of each note's text.
   const full = await fetch(`${itemNotesUrl(campaign, item)}/${mine.uuid}`, { credentials: 'include' });
   if (!full.ok) throw new Error(`Could not load your notes (${full.status}).`);
   const note: ApiNote = await full.json();
-  const body = asBody(note.body);
   return {
     uuid: note.uuid,
     title: note.title ?? '',
-    text: body ? textFromBody(body) : '',
-    plain: body ? isPlainBody(body) : true,
+    body: asBody(note.body),
     items: (note.items ?? []).filter((entry): entry is NoteItem => Array.isArray(entry)),
   };
 }
 
-// Saves the note's text, making the note if it's new. Returns the note as saved.
-export async function savePersonalNote(campaign: string, item: string, user: NoteUser, note: PersonalNote, text: string): Promise<PersonalNote> {
-  const body = text.trim() ? bodyFromText(text) : null;
+// Whether a body has nothing in it worth keeping (no text, images or the like).
+export function isEmptyBody(body: Body | null): boolean {
+  return !body || (!body.text.trim() && body.structure.every(node => node.type === 'paragraph'));
+}
+
+// Saves the note's body, making the note if it's new. Returns the note as saved.
+export async function savePersonalNote(campaign: string, item: string, user: NoteUser, note: PersonalNote, next: Body | null): Promise<PersonalNote> {
+  const body = isEmptyBody(next) ? null : next;
   if (!note.uuid) {
     const response = await fetch(itemNotesUrl(campaign, item), {
       method: 'POST',
@@ -77,7 +78,7 @@ export async function savePersonalNote(campaign: string, item: string, user: Not
       body: JSON.stringify({ title: note.title, is_public: false, body }),
     });
     if (!response.ok) throw new Error(`Could not save your notes (${response.status}).`);
-    return { ...note, uuid: await response.json(), text };
+    return { ...note, uuid: await response.json(), body };
   }
   // Archivium relinks the note to exactly the items sent, so the note's other links
   // (made in Archivium) are sent back too.
@@ -89,5 +90,5 @@ export async function savePersonalNote(campaign: string, item: string, user: Not
     body: JSON.stringify({ title: note.title, is_public: false, body, items: note.items }),
   });
   if (!response.ok) throw new Error(`Could not save your notes (${response.status}).`);
-  return { ...note, text };
+  return { ...note, body };
 }

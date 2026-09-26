@@ -164,7 +164,7 @@ export default function Character({ user }: { user: any }) {
         setHasGalleryTab(true);
       }}
       /></div>
-      <button type='button' aria-pressed={notesOpen} onClick={() => toggleNotes(!notesOpen)} title='Your own notes on this character, which only you can see'>My notes</button>
+      <button type='button' style={{ whiteSpace: 'nowrap' }} aria-pressed={notesOpen} onClick={() => toggleNotes(!notesOpen)} title='Your own notes on this character, which only you can see'>My notes</button>
     </div>}
     <LayoutTabEditor
       layout={layout}
@@ -220,14 +220,14 @@ export default function Character({ user }: { user: any }) {
     {notesOpen && campaignShortname && characterShortname && createPortal(<div style={{
       ...panelStyle,
       position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 30,
-      width: 'min(24rem, calc(100vw - 2rem))', padding: '0.75rem', boxSizing: 'border-box',
+      width: 'min(32rem, calc(100vw - 2rem))', padding: '0.75rem', boxSizing: 'border-box',
     }}>
       <PersonalNotes
         campaign={campaignShortname}
         item={characterShortname}
         itemTitle={title}
         user={user}
-        rows={10}
+        maxHeight='60vh'
         onClose={() => toggleNotes(false)}
       />
     </div>, document.body)}

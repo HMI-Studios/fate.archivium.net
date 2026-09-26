@@ -46,10 +46,11 @@ export function TopBar({ left, right }: { left: ReactNode, right?: ReactNode }) 
 // A button that opens a panel, closed by clicking elsewhere or Esc. In the top bar the
 // panel drops down from the bar's left edge (fixed, so the bar doesn't clip it); in a
 // floating toolbar along the bottom it opens upwards, above the button.
-export function MenuButton({ label, placement = 'topbar', title, children }: {
+export function MenuButton({ label, placement = 'topbar', title, width = 'min(18rem, calc(100vw - 1rem))', children }: {
   label: ReactNode,
   placement?: 'topbar' | 'above',
   title?: string,
+  width?: string,
   children: (close: () => void) => ReactNode,
 }) {
   const [open, setOpen] = useState(false);
@@ -58,7 +59,10 @@ export function MenuButton({ label, placement = 'topbar', title, children }: {
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      // Dialogs opened from inside the panel (like the rich-text editor's link dialog)
+      // live in #modal-anchor, but still belong to it.
+      const target = e.target as Element;
+      if (ref.current && !ref.current.contains(target) && !target.closest?.('#modal-anchor')) setOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('pointerdown', onPointerDown);
@@ -80,7 +84,7 @@ export function MenuButton({ label, placement = 'topbar', title, children }: {
               ? { position: 'absolute', bottom: 'calc(100% + 0.6rem)', left: '50%', transform: 'translateX(-50%)', maxHeight: '60vh' }
               : { position: 'fixed', top: `calc(${TOPBAR_HEIGHT} + 0.25rem)`, left: '0.5rem', maxHeight: `calc(100vh - ${TOPBAR_HEIGHT} - 1rem)` }),
             zIndex: 40,
-            width: 'min(18rem, calc(100vw - 1rem))',
+            width,
             overflowY: 'auto', padding: '0.75rem', boxSizing: 'border-box',
           }}
         >

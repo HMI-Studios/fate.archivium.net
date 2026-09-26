@@ -1920,14 +1920,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             )}
             {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && userId !== undefined && userName && (() => {
               const token = selectedShapes[0] as TokenShape;
-              return <MenuButton label='Notes' placement='above' title={`Your own notes on ${token.itemTitle}, which only you can see`}>
+              return <MenuButton label='Notes' placement='above' width='min(30rem, calc(100vw - 1rem))' title={`Your own notes on ${token.itemTitle}, which only you can see`}>
                 {() => <PersonalNotes
                   key={token.itemShortname}
                   campaign={campaignShortname}
                   item={token.itemShortname}
                   itemTitle={token.itemTitle}
                   user={{ id: userId, username: userName }}
-                  rows={8}
+                  maxHeight='50vh'
                 />}
               </MenuButton>;
             })()}

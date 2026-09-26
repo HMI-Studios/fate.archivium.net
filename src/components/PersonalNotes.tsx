@@ -1,5 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { loadPersonalNote, noteUrl, savePersonalNote, type NoteUser, type PersonalNote } from '../fate/notes';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import type { Body } from '../fate/body';
+import { isEmptyBody, loadPersonalNote, noteUrl, savePersonalNote, type NoteUser, type PersonalNote } from '../fate/notes';
+
+// Archivium's editor is big, so it's only loaded once someone opens their notes.
+const RichNoteEditor = lazy(() => import('./RichNoteEditor'));
+
+// Archivium's editor toolbar sticks below Archivium's navbar; here it's in a panel of
+// its own, so it sticks to the panel's top, and it's a little smaller to fit.
+const EDITOR_CSS = `
+.personal-notes .tiptap-navbar { top: 0; }
+.personal-notes .tiptap-navbar button { font-size: 1.25rem; }
+.personal-notes .tiptap { padding: 0.5rem 0.75rem 0.25rem; }
+`;
+
+const sameBody = (a: Body | null, b: Body | null) => JSON.stringify(a) === JSON.stringify(b);
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -8,21 +22,21 @@ interface Props {
   item: string;
   itemTitle: string;
   user: NoteUser;
-  rows?: number;
+  // How tall the editor can grow before it scrolls.
+  maxHeight?: string;
   // Shows a close button, for when the notes are in a panel of their own.
   onClose?: () => void;
 }
 
 // The user's private notes on a character, NPC or monster, saved as they type.
-export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 4, onClose }: Props) {
+export default function PersonalNotes({ campaign, item, itemTitle, user, maxHeight = '16rem', onClose }: Props) {
   const [note, setNote] = useState<PersonalNote | null>(null);
-  const [text, setText] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   // Saves run one after another, so a new note is only made once.
   const noteRef = useRef<PersonalNote | null>(null);
   const queue = useRef<Promise<void>>(Promise.resolve());
-  const pending = useRef<{ text: string, timer: ReturnType<typeof setTimeout> } | null>(null);
+  const pending = useRef<{ body: Body | null, timer: ReturnType<typeof setTimeout> } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +47,6 @@ export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 
       if (cancelled) return;
       noteRef.current = loaded;
       setNote(loaded);
-      setText(loaded.text);
     }).catch(error => { if (!cancelled) setLoadError(error.message); });
     return () => {
       cancelled = true;
@@ -41,12 +54,12 @@ export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 
     };
   }, [campaign, item, user.id]);
 
-  const save = (next: string) => {
+  const save = (next: Body | null) => {
     queue.current = queue.current.then(async () => {
       const current = noteRef.current;
-      if (!current || current.text === next) return;
+      if (!current || sameBody(current.body, next)) return;
       // Nothing is made for notes that were never written.
-      if (!current.uuid && !next.trim()) return;
+      if (!current.uuid && isEmptyBody(next)) return;
       setStatus('saving');
       try {
         noteRef.current = await savePersonalNote(campaign, item, user, current, next);
@@ -61,15 +74,14 @@ export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 
   const flush = () => {
     if (!pending.current) return;
     clearTimeout(pending.current.timer);
-    const next = pending.current.text;
+    const next = pending.current.body;
     pending.current = null;
     save(next);
   };
 
-  const change = (next: string) => {
-    setText(next);
+  const change = (next: Body) => {
     if (pending.current) clearTimeout(pending.current.timer);
-    pending.current = { text: next, timer: setTimeout(flush, 800) };
+    pending.current = { body: next, timer: setTimeout(flush, 800) };
   };
 
   // Save before the page goes away, too.
@@ -86,7 +98,8 @@ export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 
 
   const statusText = status === 'saving' ? 'Saving...' : status === 'saved' ? 'Saved' : status === 'error' ? 'Failed to save.' : '';
 
-  return <div className='d-flex flex-col gap-1'>
+  return <div className='d-flex flex-col gap-1 personal-notes'>
+    <style>{EDITOR_CSS}</style>
     <div className='d-flex justify-between align-center gap-2'>
       <b>My notes</b>
       <div className='d-flex align-center gap-2'>
@@ -96,22 +109,12 @@ export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 
     </div>
     {loadError && <span className='color-error'>{loadError}</span>}
     {!loadError && !note && <small style={{ color: 'var(--light-text-color)' }}>Loading...</small>}
-    {note && !note.plain && note.uuid && <>
-      <div style={{ whiteSpace: 'pre-wrap' }}>{note.text}</div>
-      <small style={{ color: 'var(--light-text-color)' }}>
-        This note has formatting that can't be edited here: <a className='link link-animated' href={noteUrl(note.uuid)}>edit it in Archivium</a>.
-      </small>
-    </>}
-    {note && note.plain && <>
-      <textarea
-        aria-label={`My notes on ${itemTitle}`}
-        placeholder={`Anything you want to remember about ${itemTitle}`}
-        value={text}
-        rows={rows}
-        onChange={({ target }) => change(target.value)}
-        onBlur={flush}
-        style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '0.5rem', font: 'inherit' }}
-      />
+    {note && <>
+      <div onBlur={flush} aria-label={`My notes on ${itemTitle}`} style={{ maxHeight, overflowY: 'auto' }}>
+        <Suspense fallback={<small style={{ color: 'var(--light-text-color)' }}>Loading the editor...</small>}>
+          <RichNoteEditor id={`notes-${item}`} campaign={campaign} body={note.body} onChange={change} />
+        </Suspense>
+      </div>
       {hint}
     </>}
   </div>;
