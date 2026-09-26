@@ -12,6 +12,8 @@ import PortraitSlot from '../components/PortraitSlot';
 import RichEntryList from '../components/RichEntryList';
 import StuntList from '../components/StuntList';
 import TakeHitDialog from '../components/TakeHitDialog';
+import VisibilityControls from '../components/VisibilityControls';
+import { claimOf, type Claim } from '../fate/vaults';
 import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
 import { aspectsForLayout } from '../fate/aspects';
@@ -62,6 +64,9 @@ export default function Character({ user }: { user: any }) {
   // The sheet data as last loaded or saved, to work out what the user changed.
   const base = useRef<unknown>(null);
   const [universeObjData, setUniverseObjData] = useState<unknown>(null);
+  // Who's in the campaign, and who can see this character (see fate/vaults.ts).
+  const [universe, setUniverse] = useState<{ author_permissions: { [id: number]: number }, authors: { [id: number]: string } } | null>(null);
+  const [access, setAccess] = useState<{ itemType: string, vaultShort: string | null, vaultTitle: string | null, claim: Claim | null } | null>(null);
   // The current text of the campaign stunts this sheet links to, by shortname. Kept
   // in a ref too, so saves (which run later) copy the latest text onto the sheet.
   const [liveStunts, setLiveStunts] = useState<{ [shortname: string]: Stunt }>({});
@@ -90,6 +95,8 @@ export default function Character({ user }: { user: any }) {
       setHasGalleryTab(parseObjData(item.obj_data)?.gallery !== undefined);
       setLayout(sheetLayout);
       setUniverseObjData(parseObjData(campaign.obj_data));
+      setUniverse(campaign);
+      setAccess({ itemType: item.item_type, vaultShort: item.vault_short ?? null, vaultTitle: item.vault ?? null, claim: claimOf(parseObjData(item.obj_data)) });
       // Read in the shape of the campaign's layout, which may not have been upgraded yet.
       const sheetData = aspectsForLayout(layoutTabData(parseObjData(item.obj_data), sheetLayout.id), sheetLayout);
       base.current = sheetData;
@@ -140,6 +147,17 @@ export default function Character({ user }: { user: any }) {
         <Link className='link link-animated' to={`/campaigns/${campaignShortname}/play`}>Game room</Link>
         {campaignShortname && characterShortname && <a className='link link-animated' href={archiviumItemUrl(campaignShortname, characterShortname)}>Open in Archivium</a>}
       </div>
+      {user && universe && access && campaignShortname && characterShortname && <VisibilityControls
+        campaign={campaignShortname}
+        item={characterShortname}
+        itemType={access.itemType}
+        vaultShort={access.vaultShort}
+        vaultTitle={access.vaultTitle}
+        claim={access.claim}
+        user={user}
+        universe={universe}
+        onChange={(vaultShort, vaultTitle, claim) => setAccess(a => a && { ...a, vaultShort, vaultTitle, claim })}
+      />}
       <span className={saveStatus === 'error' ? 'color-error' : undefined} style={{ color: saveStatus === 'error' ? undefined : 'var(--light-text-color)' }}>
         {saveStatus === 'saving' && 'Saving...'}
         {saveStatus === 'saved' && 'Saved'}
