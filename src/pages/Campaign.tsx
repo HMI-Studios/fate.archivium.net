@@ -88,11 +88,16 @@ export default function Campaign(props) {
     </div>
   </>;
   
-  const canWrite = (campaign.author_permissions[user.id] ?? 0) >= PERMS.WRITE;
+  const myLevel = campaign.author_permissions[user.id] ?? 0;
+  const canWrite = myLevel >= PERMS.WRITE;
 
   return <>
     <Breadcrumbs campaign={campaign.shortname} />
     <h1>{campaign.title}</h1>
+    {/* Public campaigns can be read by anyone. */}
+    {myLevel === PERMS.NONE && <p className='mt-0'>
+      You're looking round this campaign as a visitor. To play in it, <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/join`}>ask to join</Link>.
+    </p>}
     <div className='d-flex gap-3 flex-wrap'>
       <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/play`}>Enter the game room</Link>
       <Link className='link link-animated' to={`/campaigns/${campaign.shortname}/journal`}>Journal</Link>
@@ -121,7 +126,7 @@ export default function Campaign(props) {
       {selectedTab.key === 'stunts'
         ? <CampaignStunts campaign={campaign.shortname} universeObjData={campaign.obj_data} canCreate={canWrite} />
         : <>
-          {selectedTab.newLabel && (selectedTab.key !== 'maps' || canWrite) && (
+          {selectedTab.newLabel && canWrite && (
             <div className='mb-2'>
               <Link className='link link-animated ml-2' to={selectedTab.newPath!(campaign.shortname)}>{selectedTab.newLabel}</Link>
             </div>
