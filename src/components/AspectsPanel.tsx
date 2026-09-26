@@ -115,7 +115,7 @@ interface Props {
   // (with the slot's label as their note). Only their free invokes change here.
   consequences: { [key: string]: SceneAspect[] };
   // Each character's own aspects from their sheet (high concept, trouble...), by
-  // character key. They're changed on the sheet, and invoked with a fate point.
+  // character key. They're written on the sheet; only their free invokes change here.
   characterAspects: { [key: string]: SceneAspect[] };
   canEdit: boolean;
   // Whether the viewer runs the scene (may end it).
@@ -139,7 +139,7 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   const kind = aspectKind(aspect.kind);
   // Consequences are named and cleared on the sheet (or a monster's combat card).
   const consequence = aspect.kind === 'consequence';
-  // Character aspects are written on the sheet, and have no free invokes to track.
+  // Character aspects are written on the sheet; only their free invokes change here.
   const fromSheet = aspect.kind === 'character';
   const canRename = canEdit && !consequence && !fromSheet;
 
@@ -189,8 +189,8 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
             >●</span>
           ))}
         </span>
-        {canEdit && aspect.kind !== 'boost' && !fromSheet && (
-          <button title='Add a free invoke' onClick={() => onUpdate(aspect.id, { freeInvokes: aspect.freeInvokes + 1 })}>+ invoke</button>
+        {canEdit && aspect.kind !== 'boost' && (
+          <button title={fromSheet ? 'Add a free invoke (from creating an advantage on it)' : 'Add a free invoke'} onClick={() => onUpdate(aspect.id, { freeInvokes: aspect.freeInvokes + 1 })}>+ invoke</button>
         )}
         {canEdit && !onSheet && aspect.kind === 'temporary' && aspect.target && !tokenIdOfActor(aspect.target) && (
           <button title="Move it onto the character's sheet so it outlasts the scene" onClick={() => onKeepOnSheet(aspect)}>Keep on sheet</button>

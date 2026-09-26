@@ -1,6 +1,6 @@
 // Monsters are the one kind of character whose tokens don't share a sheet: each monster
 // token gets its own copy of the stats that change in play (stress, consequences and
-// their free invokes, fate points), laid over the monster's sheet, which still supplies
+// their free invokes, free invokes on its aspects, fate points), laid over the monster's sheet, which still supplies
 // skills and everything else. The copies are scoped to the scene: they live in its live doc (the
 // `tokenStates` map, saved to the scene item as obj_data.tokenStates so a reconnect
 // doesn't lose them) and are dropped when the token is deleted or the scene ends.
@@ -12,7 +12,7 @@ export const MONSTER_TYPE = 'monster';
 export const TOKEN_STATES_KEY = 'tokenStates';
 
 // The sheet keys a monster token keeps its own copy of.
-export const TOKEN_STATE_KEYS = ['stress', 'consequences', 'consequenceInvokes', 'fatePoints'] as const;
+export const TOKEN_STATE_KEYS = ['stress', 'consequences', 'consequenceInvokes', 'aspectInvokes', 'fatePoints'] as const;
 
 export type TokenState = Partial<Record<typeof TOKEN_STATE_KEYS[number], unknown>>;
 

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text, Transformer } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
-import { CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, mainAspectId, mainAspects, parseConsequenceId, parseSheetAspectId, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { ASPECT_INVOKES_KEY, aspectInvokes, CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, mainAspectId, mainAspects, parseConsequenceId, parseMainAspectId, parseSheetAspectId, withAspectInvokes, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { initiativeOrder, modeOf, moveInOrder, passTurn, setCurrent, startNextRound, stepTurn, undoPass, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
 import { fetchSettings, type TurnOrderMode } from '../fate/settings';
 import { useTable } from '../fate/table';
@@ -738,7 +738,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       id: mainAspectId(character.key, aspect.path),
       name: aspect.text,
       kind: 'character' as const,
-      freeInvokes: 0,
+      freeInvokes: aspectInvokes(actorSheet(character.key), aspect.path, aspect.text),
       target: character.key,
       targetTitle: character.title,
       note: aspect.label,
@@ -792,21 +792,26 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   // A consequence's free invokes: a monster token's own copy, or else the character's
   // sheet, remembering which consequence they're for.
-  const setConsequenceInvokes = async (actorKey: string, path: string, invokes: number) => {
-    const text = consequenceAspects[actorKey]?.find(a => a.id === consequenceId(actorKey, path))?.name;
+  // Free invokes on a consequence or one of a character's own aspects, kept on the sheet
+  // (or a monster token's own copy) under `key`, with the aspect's text.
+  const setStoredInvokes = async (key: typeof CONSEQUENCE_INVOKES_KEY | typeof ASPECT_INVOKES_KEY, actorKey: string, path: string, invokes: number) => {
+    const consequence = key === CONSEQUENCE_INVOKES_KEY;
+    const list = consequence ? consequenceAspects[actorKey] : characterAspects[actorKey];
+    const text = list?.find(a => a.id === (consequence ? consequenceId : mainAspectId)(actorKey, path))?.name;
     if (!canEdit || text === undefined) return;
+    const withInvokes = consequence ? withConsequenceInvokes : withAspectInvokes;
     const tokenId = tokenIdOfActor(actorKey);
     if (tokenId) {
-      setTokenState(tokenId, state => ({ ...state, [CONSEQUENCE_INVOKES_KEY]: withConsequenceInvokes(actorSheet(actorKey)?.[CONSEQUENCE_INVOKES_KEY], path, text, invokes) }));
+      setTokenState(tokenId, state => ({ ...state, [key]: withInvokes(actorSheet(actorKey)?.[key], path, text, invokes) }));
       return;
     }
-    setSheetKey(actorKey, CONSEQUENCE_INVOKES_KEY, withConsequenceInvokes(sheets[actorKey]?.[CONSEQUENCE_INVOKES_KEY], path, text, invokes));
+    setSheetKey(actorKey, key, withInvokes(sheets[actorKey]?.[key], path, text, invokes));
     try {
-      const saved = await updateSheetKey(campaignShortname, actorKey, SHEET_TAB, CONSEQUENCE_INVOKES_KEY, fresh => withConsequenceInvokes(fresh, path, text, invokes));
-      setSheetKey(actorKey, CONSEQUENCE_INVOKES_KEY, saved);
+      const saved = await updateSheetKey(campaignShortname, actorKey, SHEET_TAB, key, fresh => withInvokes(fresh, path, text, invokes));
+      setSheetKey(actorKey, key, saved);
       ySheetStamps?.set(actorKey, Date.now());
     } catch {
-      window.alert(`Couldn't save the free invokes on ${titleOf(actorKey)}'s consequence.`);
+      window.alert(`Couldn't save the free invokes on ${titleOf(actorKey)}'s ${consequence ? 'consequence' : 'aspect'}.`);
       loadSheets([actorKey]);
     }
   };
@@ -837,7 +842,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     // In the order the aspects pane lists them: a character's own aspects, their
     // consequences, their temporary aspects, then the scene's aspects on them.
     // Invoking a character's own aspect always costs a fate point.
-    ...Object.values(characterAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: 0, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
+    ...Object.values(characterAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
     ...Object.values(consequenceAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
     // (Only PCs' and NPCs' sheets: a monster's sheet aspects belong to no token in particular.)
     ...Object.entries(sheetAspects).filter(([shortname]) => characters.some(c => c.key === shortname)).flatMap(([shortname, list]) => list
@@ -920,7 +925,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const consequence = parseConsequenceId(id);
     if (consequence) {
       // Only its free invokes change here; the rest is the sheet's.
-      if (changes.freeInvokes !== undefined) setConsequenceInvokes(consequence.actorKey, consequence.path, changes.freeInvokes);
+      if (changes.freeInvokes !== undefined) setStoredInvokes(CONSEQUENCE_INVOKES_KEY, consequence.actorKey, consequence.path, changes.freeInvokes);
+      return;
+    }
+    const main = parseMainAspectId(id);
+    if (main) {
+      // Likewise a character's own aspects, which are written on the sheet.
+      if (changes.freeInvokes !== undefined) setStoredInvokes(ASPECT_INVOKES_KEY, main.actorKey, main.path, changes.freeInvokes);
       return;
     }
     const onSheet = parseSheetAspectId(id);
@@ -944,8 +955,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   };
 
   const removeAspect = (id: string) => {
-    // Consequences are cleared on the sheet (recovery), not from the scene.
-    if (parseConsequenceId(id)) return;
+    // Consequences are cleared on the sheet (recovery), not from the scene, and a
+    // character's own aspects are changed there too.
+    if (parseConsequenceId(id) || parseMainAspectId(id)) return;
     const onSheet = parseSheetAspectId(id);
     if (onSheet) {
       changeSheetAspects(onSheet.shortname, list => {

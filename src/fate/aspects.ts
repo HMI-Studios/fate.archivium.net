@@ -224,4 +224,20 @@ export const migratedAspects = (sheet: Record<string, unknown>) => aspectsForLay
 // Ids of character aspects shown in the scene panel: `main:<actor key>:<sheet path>`.
 export const mainAspectId = (actorKey: string, path: string) => `main:${actorKey}:${path}`;
 
+export function parseMainAspectId(id: string): { actorKey: string, path: string } | null {
+  const match = /^main:(.+):([^:]+)$/.exec(id);
+  return match ? { actorKey: match[1], path: match[2] } : null;
+}
+
+// Free invokes on a character's own aspects (from creating an advantage on one), by the
+// aspect's path, kept like consequences' (see consequenceInvokes) but starting at none.
+export const ASPECT_INVOKES_KEY = 'aspectInvokes';
+
+export function aspectInvokes(sheet: Record<string, unknown> | undefined, path: string, text: string): number {
+  const stored = (sheet?.[ASPECT_INVOKES_KEY] as ConsequenceInvokes | undefined)?.[path];
+  return stored && stored.text === text ? Math.max(0, stored.invokes) : 0;
+}
+
+export const withAspectInvokes = withConsequenceInvokes;
+
 export const aspectKind = (kind: AspectKind) => ASPECT_KINDS.find(k => k.kind === kind)!;
