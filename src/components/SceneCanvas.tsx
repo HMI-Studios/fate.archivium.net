@@ -34,6 +34,9 @@ export type BaseShape = {
   author?: number;
   // Shapes sharing a group are selected, moved and deleted together.
   group?: string;
+  // Locked shapes stay put: they can be selected (to unlock them), but not moved,
+  // resized, recoloured, erased or deleted, and a selection box passes over them.
+  locked?: boolean;
 };
 
 export type RectShape = BaseShape & {
@@ -1013,13 +1016,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     if (!selection.length || !target || !ydoc) return;
     ydoc.transact(() => {
       for (const id of selection) {
+        if (target.get(id)?.locked) continue;
         target.delete(id);
         // A token's scene-scoped state and aspects go with it.
         yTokenStates?.delete(id);
         aspects.filter(a => a.target === tokenActorKey(id)).forEach(a => yAspects?.delete(a.id));
       }
     });
-    setSelectedIds([]);
+    setSelectedIds(ids => ids.filter(id => target.get(id)?.locked));
   };
 
   // Center of the visible area, in map coordinates.
@@ -1076,7 +1080,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     if (!selection.includes(id)) setSelectedIds(ids);
     dragGroup.current = Object.fromEntries(ids.flatMap(sid => {
       const shape = target.get(sid);
-      return shape ? [[sid, shapePosition(shape)]] : [];
+      return shape && !shape.locked ? [[sid, shapePosition(shape)]] : [];
     }));
   };
 
@@ -1124,7 +1128,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const reach = ERASER_RADIUS / camera.scale;
     const hits = new Set<string>();
     for (const shape of shapes) {
-      if (shape.type === 'line' && mayEdit(shape) && samples.some(p => lineNear(shape, p, reach))) hits.add(shape.id);
+      if (shape.type === 'line' && mayEdit(shape) && !shape.locked && samples.some(p => lineNear(shape, p, reach))) hits.add(shape.id);
     }
     if (!hits.size) return;
     ydoc.transact(() => hits.forEach(id => target.delete(id)));
@@ -1147,7 +1151,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const hits = withGroups(stage.find('.shape')
       .filter(node => Konva.Util.haveIntersection(rect, node.getClientRect()))
       .map(node => node.id())
-      .filter(id => { const shape = shapes.find(sh => sh.id === id); return shape && mayEdit(shape); }));
+      .filter(id => { const shape = shapes.find(sh => sh.id === id); return shape && mayEdit(shape) && !shape.locked; }));
     setSelectedIds(ids => box.additive ? [...new Set([...ids, ...hits])] : hits);
   };
 
@@ -1336,7 +1340,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   // A single selected rectangle or text gets handles to resize it.
   const resizable = canMove && selection.length === 1
-    ? shapes.find(shape => shape.id === selection[0] && (shape.type === 'rect' || shape.type === 'text'))
+    ? shapes.find(shape => shape.id === selection[0] && !shape.locked && (shape.type === 'rect' || shape.type === 'text'))
     : undefined;
 
   useEffect(() => {
@@ -1367,7 +1371,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // The colour picker shows the selection's colour, and recolours it; with nothing
   // selected it picks the colour for new lines and text.
   const selectedShapes = selection.map(id => shapes.find(shape => shape.id === id)).filter((shape): shape is Shape => Boolean(shape));
-  const colorable = selectedShapes.filter(shape => colorOf(shape));
+  const colorable = selectedShapes.filter(shape => colorOf(shape) && !shape.locked);
   const shownColor = colorable.length ? toHex(colorOf(colorable[0])!) : penColor;
   const recolor = (color: string) => {
     setPenColor(color);
@@ -1382,7 +1386,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   };
 
   // The thickness picker works like the colour picker, for lines.
-  const selectedLines = selectedShapes.filter((shape): shape is LineShape => shape.type === 'line');
+  const selectedLines = selectedShapes.filter((shape): shape is LineShape => shape.type === 'line' && !shape.locked);
   const shownWidth = selectedLines.length ? selectedLines[0].strokeWidth : penWidth;
   const rewidth = (width: number) => {
     setPenWidth(width);
@@ -1414,6 +1418,25 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     });
   };
   const groupSelection = () => { if (canGroup) setGroup(`group-${Date.now()}`); };
+
+  // Locking works on the whole selection: it's unlocked if all of it is locked, and
+  // locked otherwise.
+  const lockable = selectedShapes.filter(mayEdit);
+  const allLocked = lockable.length > 0 && lockable.every(shape => shape.locked);
+  const deletable = selectedShapes.filter(shape => !shape.locked);
+  const setLocked = (ids: string[], locked: boolean) => {
+    const target = writableShapes();
+    if (!target || !ydoc) return;
+    ydoc.transact(() => {
+      for (const id of ids) {
+        const current = target.get(id);
+        if (!current || Boolean(current.locked) === locked) continue;
+        const { locked: _old, ...rest } = current;
+        target.set(id, (locked ? { ...rest, locked } : rest) as Shape);
+      }
+    });
+  };
+  const anyLocked = shapes.some(shape => shape.locked);
   const ungroupSelection = () => { if (canUngroup) setGroup(null); };
 
   const renameToken = (shape: TokenShape) => {
@@ -1435,7 +1458,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   };
 
   const editText = (shape: TextShape) => {
-    if (!mayEdit(shape)) return;
+    if (!mayEdit(shape) || shape.locked) return;
     setSelectedIds([shape.id]);
     setTextEdit({ id: shape.id, x: shape.x, y: shape.y, text: shape.text, fontSize: shape.fontSize, fill: shape.fill });
   };
@@ -1614,7 +1637,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
               const selected = selection.includes(s.id);
               const editable = mayEdit(s);
               const select = editable ? (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectShape(s.id, e) : undefined;
-              const movable = canMove && editable;
+              const movable = canMove && editable && !s.locked;
               const dragProps = {
                 onDragStart: () => handleDragStart(s.id),
                 onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => handleDragMove(s.id, e),
@@ -1893,8 +1916,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && mayEdit(selectedShapes[0]) && (
               <button onClick={() => renameToken(selectedShapes[0] as TokenShape)} title='Give this token its own name on the map (or double-click it)'>Rename</button>
             )}
-            {selection.length > 0 && <button onClick={deleteSelected} title='Delete what’s selected (Delete key; Esc to deselect)'>
-              Delete{selection.length > 1 ? ` ${selection.length}` : ''}
+            {lockable.length > 0 && <button
+              onClick={() => setLocked(lockable.map(shape => shape.id), !allLocked)}
+              aria-pressed={allLocked}
+              title={allLocked ? 'Unlock, so it can be moved and changed again' : 'Lock in place, so it can’t be moved, changed or deleted by mistake'}
+            >{allLocked ? 'Unlock' : 'Lock'}</button>}
+            {deletable.length > 0 && <button onClick={deleteSelected} title={`Delete what’s selected${deletable.length < selection.length ? ' (except what’s locked)' : ''} (Delete key; Esc to deselect)`}>
+              Delete{deletable.length > 1 ? ` ${deletable.length}` : ''}
             </button>}
           </>}
           {canEdit && gm && <>
@@ -1907,6 +1935,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
                 {meta.imageStamp !== null && <button disabled={uploading} onClick={() => { close(); removeBackground(); }}>Remove background</button>}
                 <button onClick={() => { close(); setSelectedIds([]); setResizingMap(true); }} title="Drag the map area's edges to resize it">Resize map area</button>
                 <button onClick={() => { close(); fitMapToContents(); }} title='Fit the map area around everything on it'>Fit map area to contents</button>
+                {anyLocked && <button onClick={() => { close(); setLocked(shapes.filter(shape => shape.locked).map(shape => shape.id), false); }} title='Unlock everything locked on the map'>Unlock everything</button>}
               </div>}
             </MenuButton>
             {/* Outside the menu, so it's still there when a file is picked. */}
