@@ -35,7 +35,8 @@ export type PersonalNote = {
 const itemNotesUrl = (campaign: string, item: string) => `${ARCHIVIUM_URL}/api/universes/${campaign}/items/${item}/notes`;
 
 export const noteUrl = (uuid: string) => `${ARCHIVIUM_URL}/notes/${uuid}`;
-export const myNotesUrl = `${ARCHIVIUM_URL}/notes`;
+// A function, as ARCHIVIUM_URL isn't set yet while this module loads (App imports it).
+export const myNotesUrl = (uuid?: string | null) => `${ARCHIVIUM_URL}/notes${uuid ? `?note=${uuid}` : ''}`;
 
 export async function loadPersonalNote(campaign: string, item: string, itemTitle: string, user: NoteUser): Promise<PersonalNote> {
   const response = await fetch(itemNotesUrl(campaign, item), { credentials: 'include' });

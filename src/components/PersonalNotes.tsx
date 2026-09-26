@@ -79,7 +79,7 @@ export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 
   }, []);
 
   const hint = <small style={{ color: 'var(--light-text-color)' }}>
-    Only you can see these. They're also kept in <a className='link link-animated' href={myNotesUrl}>your notes on Archivium</a>.
+    Only you can see these. They're also kept in <a className='link link-animated' href={myNotesUrl(noteRef.current?.uuid ?? note?.uuid)}>your notes on Archivium</a>.
   </small>;
 
   const statusText = status === 'saving' ? 'Saving...' : status === 'saved' ? 'Saved' : status === 'error' ? 'Failed to save.' : '';
