@@ -9,6 +9,7 @@ import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PersonalNotes from '../components/PersonalNotes';
 import { panelStyle } from '../components/PlayLayout';
 import PortraitSlot from '../components/PortraitSlot';
+import RichText from '../components/RichText';
 import RichEntryList from '../components/RichEntryList';
 import StuntList from '../components/StuntList';
 import TakeHitDialog from '../components/TakeHitDialog';
@@ -18,6 +19,7 @@ import { PERMS } from '../perms';
 import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
 import { aspectsForLayout } from '../fate/aspects';
+import { richTextOf, withRichText } from '../fate/richFields';
 import { entryListValues, type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
 import LayoutTabEditor from '../layout/LayoutTabEditor';
@@ -229,6 +231,26 @@ export default function Character({ user }: { user: any }) {
             <button type='button' onClick={() => setTakingHit(true)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
           </div>
         </>;
+        // Multiline text (like the description) takes rich text, kept as the entry
+        // lists below keep theirs (see fate/richFields.ts).
+        if (field.widget === 'text' && field.multiline && !field.path.includes('.') && campaignShortname) {
+          const sheet = (data ?? {}) as Record<string, unknown>;
+          return <div className='tab-layout-field'>
+            <RichText
+              id={id}
+              ariaLabel={field.caption ?? field.label ?? field.path}
+              campaign={campaignShortname}
+              value={richTextOf(sheet, field.path)}
+              readOnly={!canEdit}
+              onChange={body => {
+                const next = withRichText(sheet, field.path, body);
+                setData(next);
+                save(next);
+              }}
+            />
+            {field.caption && <label htmlFor={id} className='tab-layout-caption'>{field.caption}</label>}
+          </div>;
+        }
         // Stunts are handled below; other entry lists with multiline parts (aspects'
         // backstories) take rich text. High Concept and Trouble are entryLists too (so
         // they render just like the other aspects), but always hold exactly one row.
