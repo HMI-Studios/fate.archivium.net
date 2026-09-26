@@ -15,7 +15,12 @@ import Map from './pages/Map';
 import Room from './pages/Room';
 import { ThemeProvider } from './theme';
 
-export const ARCHIVIUM_URL = 'https://archivium.net';
+// Local test servers talk to dev Archivium (main only accepts requests from its own
+// sites); the deployed app, and anything else, talks to main.
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+export const ARCHIVIUM_URL = LOCAL_HOSTS.includes(window.location.hostname)
+  ? 'https://dev.archivium.net'
+  : 'https://archivium.net';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
