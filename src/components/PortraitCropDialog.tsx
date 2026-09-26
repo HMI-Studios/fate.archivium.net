@@ -8,9 +8,11 @@ type Props = {
   source: File | string;
   // Whether to keep it a PNG (which may be see-through); otherwise it becomes a JPEG.
   png: boolean;
-  onCrop: (image: Blob) => void;
+  // The name of the crop this one replaces, which can be deleted from the gallery with it.
+  replacing?: string;
+  onCrop: (image: Blob, deleteReplaced: boolean) => void;
   // Uses the picture as it is, centred in the frame as before.
-  onUseWhole: () => void;
+  onUseWhole: (deleteReplaced: boolean) => void;
   onClose: () => void;
 };
 
@@ -22,13 +24,14 @@ const MAX_OUTPUT = 1024;
 
 type View = { zoom: number, x: number, y: number };
 
-export default function PortraitCropDialog({ source, png, onCrop, onUseWhole, onClose }: Props) {
+export default function PortraitCropDialog({ source, png, replacing, onCrop, onUseWhole, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [failed, setFailed] = useState(false);
   // The image's top-left corner in the frame, and how far it's zoomed in from just covering it.
   const [view, setView] = useState<View>({ zoom: 1, x: 0, y: 0 });
   const drag = useRef<{ pointerX: number, pointerY: number, x: number, y: number } | null>(null);
+  const [deleteReplaced, setDeleteReplaced] = useState(true);
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -95,7 +98,7 @@ export default function PortraitCropDialog({ source, png, onCrop, onUseWhole, on
     canvas.getContext('2d')!.drawImage(image, -view.x / scale, -view.y / scale, side, side, 0, 0, size, size);
     const type = png ? 'image/png' : 'image/jpeg';
     canvas.toBlob(blob => {
-      if (blob) onCrop(blob);
+      if (blob) onCrop(blob, !!replacing && deleteReplaced);
       dialog.current?.close();
     }, type, 0.92);
   };
@@ -153,9 +156,13 @@ export default function PortraitCropDialog({ source, png, onCrop, onUseWhole, on
           style={{ flex: '1 1 auto' }}
         />
       </label>
+      {replacing && <label className='d-flex align-center gap-1' title="Portraits cropped here are saved in the character's gallery, which counts towards the campaign's images">
+        <input type='checkbox' checked={deleteReplaced} onChange={({ target }) => setDeleteReplaced(target.checked)} />
+        <small>Delete the previous crop ({replacing}) from the gallery</small>
+      </label>}
       <div className='d-flex gap-1 justify-end'>
         <button type='button' onClick={() => dialog.current?.close()}>Cancel</button>
-        <button type='button' onClick={() => { onUseWhole(); dialog.current?.close(); }} title='Use the whole picture, without cropping it'>Don't crop</button>
+        <button type='button' onClick={() => { onUseWhole(!!replacing && deleteReplaced); dialog.current?.close(); }} title='Use the whole picture, without cropping it'>Don't crop</button>
         <button type='button' disabled={!image} onClick={crop}><b>Use this</b></button>
       </div>
     </div>

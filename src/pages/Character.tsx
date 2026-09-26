@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
-import { portraitId, PORTRAIT_KEY, PORTRAIT_SOURCE_KEY, type GalleryImage } from '../fate/portrait';
+import { portraitOf, withPortrait, type GalleryImage } from '../fate/portrait';
 import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PortraitSlot from '../components/PortraitSlot';
@@ -28,6 +28,9 @@ export default function Character() {
   const [title, setTitle] = useState<string | null>(null);
   const [layout, setLayout] = useState<TabLayout | null>(null);
   const [data, setData] = useState<unknown>(null);
+  // The latest data, for changes made after something slow (like an upload) finishes.
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [takingHit, setTakingHit] = useState(false);
@@ -125,13 +128,11 @@ export default function Character() {
       campaignShortname={campaignShortname}
       characterShortname={characterShortname}
       title={title}
-      portrait={portraitId(data)}
-      portraitSource={portraitId(data, PORTRAIT_SOURCE_KEY)}
+      portrait={portraitOf(data)}
       gallery={gallery}
       hasGalleryTab={hasGalleryTab}
-      onChange={(portrait, source) => {
-        const { [PORTRAIT_KEY]: _, [PORTRAIT_SOURCE_KEY]: _source, ...rest } = (data ?? {}) as Record<string, unknown>;
-        const next = portrait === null ? rest : { ...rest, [PORTRAIT_KEY]: portrait, ...(source !== null ? { [PORTRAIT_SOURCE_KEY]: source } : {}) };
+      onChange={portrait => {
+        const next = withPortrait(dataRef.current, portrait);
         setData(next);
         save(next);
       }}

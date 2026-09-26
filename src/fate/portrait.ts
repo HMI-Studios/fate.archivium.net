@@ -8,6 +8,10 @@ export const PORTRAIT_KEY = 'portrait';
 // The gallery image a portrait was cropped from, so it can be cropped again from the whole
 // picture; portraits cropped from a new upload have none (only the crop is uploaded).
 export const PORTRAIT_SOURCE_KEY = 'portraitSource';
+// Whether the portrait is a crop made in this app, which can be deleted when it's replaced.
+export const PORTRAIT_CROP_KEY = 'portraitCrop';
+
+export type Portrait = { id: number, source: number | null, crop: boolean };
 
 export type GalleryImage = {
   id: number;
@@ -24,6 +28,24 @@ export const galleryImageUrl = (campaign: string, item: string, imageId: number)
 export function portraitId(sheet: unknown, key = PORTRAIT_KEY): number | null {
   const value = sheet && typeof sheet === 'object' ? (sheet as Record<string, unknown>)[key] : undefined;
   return typeof value === 'number' ? value : null;
+}
+
+export function portraitOf(sheet: unknown): Portrait | null {
+  const id = portraitId(sheet);
+  if (id === null) return null;
+  return { id, source: portraitId(sheet, PORTRAIT_SOURCE_KEY), crop: (sheet as Record<string, unknown>)[PORTRAIT_CROP_KEY] === true };
+}
+
+// A sheet with `portrait` (or none) instead of its current one.
+export function withPortrait(sheet: unknown, portrait: Portrait | null): Record<string, unknown> {
+  const { [PORTRAIT_KEY]: _, [PORTRAIT_SOURCE_KEY]: _source, [PORTRAIT_CROP_KEY]: _crop, ...rest } = (sheet ?? {}) as Record<string, unknown>;
+  if (!portrait) return rest;
+  return {
+    ...rest,
+    [PORTRAIT_KEY]: portrait.id,
+    ...(portrait.source !== null ? { [PORTRAIT_SOURCE_KEY]: portrait.source } : {}),
+    ...(portrait.crop ? { [PORTRAIT_CROP_KEY]: true } : {}),
+  };
 }
 
 // Uploads an image to the item's gallery and returns its id. Items only show a
@@ -51,6 +73,34 @@ export async function uploadToGallery(campaign: string, item: string, file: File
     });
   }
   return insertId;
+}
+
+// Deletes an image from the item's gallery and returns what's left in it. Archivium has
+// no endpoint for this: like its own editor, it saves the whole item with the image left
+// out of its gallery. The rest of the item is sent back as it's fetched here, just
+// before, so only an edit saved in the moment between the two would be lost.
+export async function deleteGalleryImage(campaign: string, item: string, imageId: number): Promise<GalleryImage[]> {
+  const fetched = await fetch(itemUrl(campaign, item), { credentials: 'include' });
+  if (!fetched.ok) throw new Error(`Couldn't load ${item} (${fetched.status}).`);
+  const current = await fetched.json();
+  const gallery = ((current.gallery ?? []) as GalleryImage[]).filter(image => image.id !== imageId);
+  const response = await fetch(itemUrl(campaign, item), {
+    credentials: 'include',
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title: current.title,
+      item_type: current.item_type,
+      obj_data: typeof current.obj_data === 'string' ? JSON.parse(current.obj_data) : current.obj_data,
+      // Saving an item replaces its tags, so they're sent back too.
+      tags: current.tags ?? [],
+      gallery: gallery.map(({ id, name, label }) => ({ id, name, label })),
+    }),
+  });
+  if (!response.ok) throw new Error(`Couldn't delete the image (${response.status}).`);
+  return gallery;
 }
 
 // Loads an image for drawing on a canvas; null until it has loaded (or if it fails).
