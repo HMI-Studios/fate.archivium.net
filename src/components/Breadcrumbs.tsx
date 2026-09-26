@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
+import { usePageTitle } from '../pageTitle';
 
 // Breadcrumbs in Archivium's style (#breadcrumbs, links separated by " / "):
 // Campaigns / <campaign> / ... Titles are looked up from shortnames, and cached
@@ -52,6 +53,11 @@ export default function Breadcrumbs({ campaign, item, trail = [], current }: Pro
   crumbs.push(...trail);
   if (current !== undefined) crumbs.push({ label: current });
   else if (item) crumbs.push({ label: itemTitle ?? item });
+
+  // The tab is titled after the page, then its campaign (the page itself, on a campaign's home).
+  const last = crumbs[crumbs.length - 1].label;
+  const campaignName = campaign ? campaignTitle ?? campaign : null;
+  usePageTitle(crumbs.length > 2 || !campaign ? (typeof last === 'string' ? last : null) : null, campaignName);
 
   return (
     <div id='breadcrumbs'>

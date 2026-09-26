@@ -4,6 +4,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { archiviumItemUrl, useTitle } from '../components/Breadcrumbs';
 import SceneCanvas from '../components/SceneCanvas';
 import { isGameMaster } from '../perms';
+import { usePageTitle } from '../pageTitle';
 import type { Campaign } from './Campaign';
 
 interface Props {
@@ -15,6 +16,7 @@ export default function Map({ user }: Props) {
   const mapTitle = useTitle(campaignShortname && mapShortname ? `${campaignShortname}/items/${mapShortname}` : null);
   // Needed to know whether the viewer is the GM; undefined while loading, null if it can't be read.
   const [campaign, setCampaign] = useState<Campaign | null | undefined>(undefined);
+  usePageTitle(mapTitle ?? mapShortname, campaign?.title ?? campaignShortname);
 
   useEffect(() => {
     if (!campaignShortname) return;

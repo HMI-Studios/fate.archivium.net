@@ -3,6 +3,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { Link, useNavigate } from 'react-router';
 import { acceptInvite, declineInvite, fetchMyInvites, forgetPendingJoin, pendingJoin, type MyInvite } from '../fate/members';
 import { roleLabel } from '../perms';
+import { usePageTitle } from '../pageTitle';
 import type { Campaign } from './Campaign';
 
 interface Props {
@@ -17,6 +18,7 @@ export default function Home({ user }: Props) {
   const [error, setError] = useState<string | null>(null);
   // A join link followed before signing in, if signing in didn't lead back to it.
   const [pending, setPending] = useState(pendingJoin);
+  usePageTitle('Campaigns');
 
   useEffect(() => {
     fetch(`${ARCHIVIUM_URL}/api/universes`, { credentials: 'include' }).then(async (response) => {

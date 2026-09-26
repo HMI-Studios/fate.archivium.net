@@ -6,6 +6,7 @@ import { FullScreen, TopBar, MenuButton } from '../components/PlayLayout';
 import SceneCanvas from '../components/SceneCanvas';
 import { isLive, useSyncedDoc } from '../sync';
 import { isGameMaster } from '../perms';
+import { usePageTitle } from '../pageTitle';
 import type { Campaign } from './Campaign';
 
 
@@ -66,6 +67,16 @@ export default function Room({ user }: Props) {
     yRoom.set('activeScene', savedRoom?.activeScene ?? null);
   }, [canDrive, campaign]);
 
+  const isGM = campaign ? isGameMaster(campaign, user) : false;
+  const activeScene = liveActiveScene !== undefined ? liveActiveScene : (savedRoom?.activeScene ?? null);
+  const sceneTitle = (shortname: string | null) => scenes?.find(s => s.shortname === shortname)?.title ?? shortname;
+  // Hiding is only soft for now: players' screens only ever load the active scene,
+  // but they can still read other scenes through the API. When Archivium can hide
+  // items, unrevealed scenes should be hidden there too; `scene/` docs already
+  // defer to item permissions, so this view needs no change for that.
+  const shownScene = isGM ? editingScene ?? activeScene : activeScene;
+  usePageTitle(shownScene ? sceneTitle(shownScene) : 'Game room', campaign?.title ?? campaignShortname);
+
   if (!campaignShortname) return <>No campaign specified!</>;
 
   if (!campaign || !scenes) return <>
@@ -73,10 +84,6 @@ export default function Room({ user }: Props) {
       <div className='loader' />
     </div>
   </>;
-
-  const isGM = isGameMaster(campaign, user);
-  const activeScene = liveActiveScene !== undefined ? liveActiveScene : (savedRoom?.activeScene ?? null);
-  const sceneTitle = (shortname: string | null) => scenes.find(s => s.shortname === shortname)?.title ?? shortname;
 
   const showToPlayers = async (shortname: string | null) => {
     if (!yRoom || !canDrive) return;
@@ -90,12 +97,6 @@ export default function Room({ user }: Props) {
       body: JSON.stringify({ room: { activeScene: shortname } satisfies RoomState }),
     });
   };
-
-  // Hiding is only soft for now: players' screens only ever load the active scene,
-  // but they can still read other scenes through the API. When Archivium can hide
-  // items, unrevealed scenes should be hidden there too; `scene/` docs already
-  // defer to item permissions, so this view needs no change for that.
-  const shownScene = isGM ? editingScene ?? activeScene : activeScene;
 
   const scenesMenu = isGM && (
     <MenuButton label='Scenes'>
