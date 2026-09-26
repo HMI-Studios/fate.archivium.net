@@ -50,9 +50,12 @@ export function userTheme(user: ThemeUser): Theme {
   return (user.preferred_theme === 'custom' ? user.custom_theme : base) ?? THEMES.default;
 }
 
+// Whether a campaign gets premium features, like its own theme.
+export const isPremium = (universe: ThemeUniverse | null) => (universe?.tier ?? 0) >= PREMIUM_TIER;
+
 export function campaignTheme(user: ThemeUser, universe: ThemeUniverse | null): Theme {
   const fallback = userTheme(user);
-  if (!universe || (universe.tier ?? 0) < PREMIUM_TIER) return fallback;
+  if (!universe || !isPremium(universe)) return fallback;
   const objData = typeof universe.obj_data === 'string' ? JSON.parse(universe.obj_data) : universe.obj_data as Record<string, any> | undefined;
   const name = objData?.theme;
   if (name === 'custom') return objData?.customTheme ?? {};
@@ -88,6 +91,18 @@ export const hasBackdrop = (theme: Theme) => Boolean(theme.background || theme.b
 const ThemeContext = createContext<Theme>(THEMES.default);
 export const useTheme = () => useContext(ThemeContext);
 
+// A backdrop image a page puts in place of the theme's (the game room's map can have
+// one), on a premium campaign's pages. It replaces the universe's and the user's
+// theme alike, on glass like Archivium's image themes.
+const BackdropContext = createContext<(url: string | null) => void>(() => {});
+export function useBackdrop(url: string | null) {
+  const setBackdrop = useContext(BackdropContext);
+  useEffect(() => {
+    setBackdrop(url);
+    return () => setBackdrop(null);
+  }, [setBackdrop, url]);
+}
+
 // Campaigns by shortname, fetched once for their themes (null if they can't be read).
 const universes = new Map<string, Promise<ThemeUniverse | null>>();
 function fetchUniverse(shortname: string): Promise<ThemeUniverse | null> {
@@ -99,12 +114,24 @@ function fetchUniverse(shortname: string): Promise<ThemeUniverse | null> {
   return universes.get(shortname)!;
 }
 
+// Whether the campaign is premium; null until that's known.
+export function usePremiumCampaign(shortname: string): boolean | null {
+  const [premium, setPremium] = useState<{ shortname: string, premium: boolean } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchUniverse(shortname).then(universe => { if (!cancelled) setPremium({ shortname, premium: isPremium(universe) }); });
+    return () => { cancelled = true; };
+  }, [shortname]);
+  return premium?.shortname === shortname ? premium.premium : null;
+}
+
 // Applies the theme for the current page: the campaign's, on a campaign's pages.
 export function ThemeProvider({ user, children }: { user: ThemeUser, children: React.ReactNode }) {
   const { pathname } = useLocation();
   const campaign = matchPath('/campaigns/:campaignShortname/*', pathname)?.params.campaignShortname
     ?? matchPath('/campaigns/:campaignShortname', pathname)?.params.campaignShortname;
   const [universe, setUniverse] = useState<{ shortname: string, data: ThemeUniverse | null } | null>(null);
+  const [backdrop, setBackdrop] = useState<string | null>(null);
 
   useEffect(() => {
     if (!campaign) return;
@@ -113,13 +140,16 @@ export function ThemeProvider({ user, children }: { user: ThemeUser, children: R
     return () => { cancelled = true; };
   }, [campaign]);
 
-  const theme = campaign
-    ? campaignTheme(user, universe?.shortname === campaign ? universe.data : null)
-    : userTheme(user);
+  const campaignData = campaign && universe?.shortname === campaign ? universe.data : null;
+  const theme = !campaign ? userTheme(user)
+    : backdrop && isPremium(campaignData) ? { glass: true, backgroundImage: backdrop }
+      : campaignTheme(user, campaignData);
 
   return <ThemeContext.Provider value={theme}>
-    <style>{themeCss(theme)}</style>
-    {children}
+    <BackdropContext.Provider value={setBackdrop}>
+      <style>{themeCss(theme)}</style>
+      {children}
+    </BackdropContext.Provider>
   </ThemeContext.Provider>;
 }
 
