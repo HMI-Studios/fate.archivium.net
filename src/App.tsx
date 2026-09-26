@@ -15,7 +15,7 @@ import Map from './pages/Map';
 import Room from './pages/Room';
 import { ThemeProvider } from './theme';
 
-export const ARCHIVIUM_URL = 'https://dev.archivium.net';
+export const ARCHIVIUM_URL = 'https://archivium.net';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
