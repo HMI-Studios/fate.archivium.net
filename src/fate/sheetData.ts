@@ -31,7 +31,7 @@ export function layoutTabData(objData: unknown, tabId: string): TabData {
   return asTabData(LEGACY_KEYS[tabId] ? data[LEGACY_KEYS[tabId]] : undefined);
 }
 
-async function fetchObjData(campaign: string, item: string): Promise<Record<string, any>> {
+export async function fetchObjData(campaign: string, item: string): Promise<Record<string, any>> {
   const response = await fetch(itemUrl(campaign, item), { credentials: 'include' });
   if (!response.ok) throw new Error(`Could not load ${item} (${response.status}).`);
   const data = await response.json();

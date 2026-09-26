@@ -15,7 +15,8 @@ import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { consequenceSlots, stressTracks, takenConsequences, trackKey, withBoxToggled, withHit } from '../fate/stress';
 import { MONSTER_TYPE, TOKEN_STATES_KEY, tokenActorKey, tokenIdOfActor, tokenSheet, type TokenState } from '../fate/tokenState';
 import { getPath, setPath } from '../layout/core';
-import { fetchLayoutTab, layoutTabData, updateLayoutTab, updateSheetKey } from '../fate/sheetData';
+import { fetchObjData, layoutTabData, updateLayoutTab, updateSheetKey } from '../fate/sheetData';
+import { claimOf } from '../fate/vaults';
 import { isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 import AspectsPanel, { type SceneCharacter } from './AspectsPanel';
@@ -331,6 +332,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const [savedAspects, setSavedAspects] = useState<SceneAspect[]>([]);
   // Sheet data of the characters in the scene, for their temporary aspects, skills and fate points.
   const [sheets, setSheets] = useState<{ [shortname: string]: Record<string, unknown> }>({});
+  // Who has claimed each character on the board, by shortname (see fate/vaults.ts).
+  const [claimedBy, setClaimedBy] = useState<{ [shortname: string]: number | null }>({});
   const [drawing, setDrawing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // A selection box being dragged out, in map coordinates.
@@ -772,8 +775,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   const loadSheets = (shortnames: string[]) => {
     shortnames.forEach(shortname => {
-      fetchLayoutTab(campaignShortname, shortname, SHEET_TAB)
-        .then(root => setSheets(current => ({ ...current, [shortname]: root })))
+      fetchObjData(campaignShortname, shortname)
+        .then(objData => {
+          setSheets(current => ({ ...current, [shortname]: layoutTabData(objData, SHEET_TAB) }));
+          setClaimedBy(current => ({ ...current, [shortname]: claimOf(objData)?.id ?? null }));
+        })
         .catch(() => {});
     });
   };
@@ -2014,6 +2020,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       <DiceRoller
         rolls={table.rolls.slice(0, 20)}
         characters={characters}
+        // The viewer's own character, if they've claimed one on the board.
+        own={characters.find(c => !c.scoped && userId !== undefined && claimedBy[c.shortname] === userId)?.key}
         skills={Object.fromEntries(characters.map(c => [c.key, skillRatings(actorSheet(c.key))]))}
         fatePoints={Object.fromEntries(characters.filter(c => actorSheet(c.key)).map(c => [c.key, fatePoints(actorSheet(c.key))]))}
         aspects={invokableAspects}

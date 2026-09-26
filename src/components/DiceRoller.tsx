@@ -17,6 +17,8 @@ export const SCENE_OWNER = 'Scene';
 interface Props {
   rolls: Roll[];
   characters: SceneCharacter[];
+  // The viewer's own character (by key), rolled for until they pick another.
+  own?: string;
   // By actor key (SceneCharacter.key).
   skills: { [key: string]: { [skill: string]: number } };
   fatePoints: { [key: string]: number };
@@ -142,8 +144,10 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
   );
 }
 
-export default function DiceRoller({ rolls, characters, skills, fatePoints, aspects, canRoll, onRoll, onInvoke, journal, onOpenChange }: Props) {
-  const [character, setCharacter] = useState('');
+export default function DiceRoller({ rolls, characters, own, skills, fatePoints, aspects, canRoll, onRoll, onInvoke, journal, onOpenChange }: Props) {
+  // Who the viewer picked to roll for ('' for no one), or null until they pick.
+  const [picked, setPicked] = useState<string | null>(null);
+  const character = picked ?? (own && characters.some(c => c.key === own) ? own : '');
   const [skill, setSkill] = useState('');
   const [modifier, setModifier] = useState(0);
 
@@ -181,7 +185,7 @@ export default function DiceRoller({ rolls, characters, skills, fatePoints, aspe
         {canRoll && (
           <form className='d-flex flex-col gap-1' onSubmit={e => { e.preventDefault(); roll(); }}>
             <div className='d-flex gap-1 flex-wrap'>
-              <select aria-label='Rolling character' value={character} onChange={({ target }) => { setCharacter(target.value); setSkill(''); }}>
+              <select aria-label='Rolling character' value={character} onChange={({ target }) => { setPicked(target.value); setSkill(''); }}>
                 <option value=''>No character</option>
                 {characters.map(c => (
                   <option key={c.key} value={c.key}>
