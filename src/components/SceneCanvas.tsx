@@ -66,6 +66,8 @@ export type TokenShape = BaseShape & {
   // The item's category; tokens placed before this was recorded look it up instead.
   itemType?: string;
   color: string;
+  // A name for this token on the map, instead of the character's.
+  nickname?: string;
 };
 
 export type TextShape = BaseShape & {
@@ -341,6 +343,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const [penWidth, setPenWidth] = useState(LINE_WIDTHS[0].width);
   // Text being written or edited in place, in map coordinates; id is null for new text.
   const [textEdit, setTextEdit] = useState<{ id: string | null, x: number, y: number, text: string, fontSize: number, fill: string } | null>(null);
+  // A token being renamed, in place under it.
+  const [nameEdit, setNameEdit] = useState<{ id: string, text: string } | null>(null);
 
   const [tool, setTool] = useState<Tool>('pan');
   // The shapes being dragged together, with where each started.
@@ -563,8 +567,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   const tokens = shapes.filter((shape): shape is TokenShape => shape.type === 'token');
   const isMonster = (token: TokenShape) => (token.itemType ?? tokenCandidates.find(c => c.shortname === token.itemShortname)?.item_type) === MONSTER_TYPE;
-  // Several tokens of one character are numbered, e.g. "Goblin 2".
+  // A token's own name if it's been given one; otherwise several tokens of one character
+  // are numbered, e.g. "Goblin 2" (counting named ones, so naming one renumbers no others).
   const tokenLabel = (token: TokenShape) => {
+    if (token.nickname) return token.nickname;
     const same = tokens.filter(t => t.itemShortname === token.itemShortname);
     return same.length > 1 ? `${token.itemTitle} ${same.indexOf(token) + 1}` : token.itemTitle;
   };
@@ -575,7 +581,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     if (isMonster(token)) {
       characters.push({ key: tokenActorKey(token.id), shortname: token.itemShortname, title: tokenLabel(token), scoped: true });
     } else if (!characters.some(c => c.key === token.itemShortname)) {
-      characters.push({ key: token.itemShortname, shortname: token.itemShortname, title: token.itemTitle });
+      // Called by the name on one of their tokens, if one has one.
+      const named = tokens.find(t => t.itemShortname === token.itemShortname && t.nickname);
+      characters.push({ key: token.itemShortname, shortname: token.itemShortname, title: named?.nickname ?? token.itemTitle });
     }
   }
   const sheetShortnames = [...new Set(tokens.map(t => t.itemShortname))].sort().join(',');
@@ -1393,6 +1401,24 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const groupSelection = () => { if (canGroup) setGroup(`group-${Date.now()}`); };
   const ungroupSelection = () => { if (canUngroup) setGroup(null); };
 
+  const renameToken = (shape: TokenShape) => {
+    if (!mayEdit(shape)) return;
+    setSelectedIds([shape.id]);
+    setNameEdit({ id: shape.id, text: shape.nickname ?? '' });
+  };
+
+  // Saves a token's new name; clearing it goes back to the character's.
+  const commitName = (edit: NonNullable<typeof nameEdit>) => {
+    setNameEdit(current => current === edit ? null : current);
+    const target = writableShapes();
+    const current = target?.get(edit.id);
+    if (!target || current?.type !== 'token') return;
+    const nickname = edit.text.trim().replace(/\s+/g, ' ');
+    if (nickname === (current.nickname ?? '')) return;
+    const { nickname: _old, ...rest } = current;
+    target.set(edit.id, nickname && nickname !== current.itemTitle ? { ...rest, nickname } : rest);
+  };
+
   const editText = (shape: TextShape) => {
     if (!mayEdit(shape)) return;
     setSelectedIds([shape.id]);
@@ -1633,11 +1659,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
                     draggable={movable}
                     onClick={select}
                     onTap={select}
+                    onDblClick={() => renameToken(s)}
+                    onDblTap={() => renameToken(s)}
                     {...dragProps}
                   >
                     {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
                     <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
-                    <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} />
+                    <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} visible={nameEdit?.id !== s.id} />
                     {/* The character's aspects in play, as tags beside the token. */}
                     {tokenTags(s).map((tag, i) => (
                       <Label key={i} x={26} y={-18 + i * 18} listening={false}>
@@ -1740,6 +1768,39 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         />;
       })()}
 
+      {nameEdit && (() => {
+        const edit = nameEdit;
+        const token = tokens.find(t => t.id === edit.id);
+        if (!token) return null;
+        return <input
+          autoFocus
+          aria-label={`Name for this ${token.itemTitle} token`}
+          title={`Leave it empty to go back to "${token.itemTitle}"`}
+          placeholder={token.itemTitle}
+          value={edit.text}
+          maxLength={60}
+          onChange={({ target }) => setNameEdit({ ...edit, text: target.value })}
+          onFocus={({ target }) => target.select()}
+          onBlur={() => commitName(edit)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commitName(edit);
+            // Only cancels the rename, leaving the token selected.
+            if (e.key === 'Escape') { e.stopPropagation(); setNameEdit(null); }
+          }}
+          style={{
+            position: 'absolute',
+            // Centred where the token's name is drawn.
+            left: token.x * camera.scale + camera.x,
+            top: `calc(${TOPBAR_HEIGHT} + ${(token.y + 22) * camera.scale + camera.y}px)`,
+            transform: 'translateX(-50%)',
+            width: '10rem',
+            zIndex: 16,
+            textAlign: 'center',
+            fontSize: '0.8rem',
+          }}
+        />;
+      })()}
+
       {/* The turn order floats over the top of the map, between the drawers' tabs. */}
       <div style={{ position: 'absolute', top: `calc(${TOPBAR_HEIGHT} + 0.5rem)`, ...between, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <div style={{ pointerEvents: 'auto', maxWidth: '100%', minWidth: 0 }}>
@@ -1814,6 +1875,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             <button onClick={addRect}>Rectangle</button>
             {canGroup && <button onClick={groupSelection} title='Group these so they select and move together (Ctrl+G)'>Group</button>}
             {canUngroup && <button onClick={ungroupSelection} title='Ungroup (Ctrl+Shift+G)'>Ungroup</button>}
+            {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && mayEdit(selectedShapes[0]) && (
+              <button onClick={() => renameToken(selectedShapes[0] as TokenShape)} title='Give this token its own name on the map (or double-click it)'>Rename</button>
+            )}
             {selection.length > 0 && <button onClick={deleteSelected} title='Delete what’s selected (Delete key; Esc to deselect)'>
               Delete{selection.length > 1 ? ` ${selection.length}` : ''}
             </button>}
