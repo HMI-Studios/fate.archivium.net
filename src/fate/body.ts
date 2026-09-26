@@ -1,5 +1,5 @@
 // Archivium's rich-text documents (item bodies and notes; archivium
-// src/lib/tiptapHelpers.ts IndexedDocument), which this app edits as plain text.
+// src/lib/tiptapHelpers.ts IndexedDocument): converting to and from plain text.
 
 export type BodyNode = { type: string, start?: number, end?: number, marks?: unknown[], attrs?: Record<string, unknown>, content?: BodyNode[] };
 export type Body = { text: string, structure: BodyNode[] };
@@ -42,7 +42,9 @@ export function asBody(value: unknown): Body | null {
 
 // A readable plain-text version of any body (formatting dropped; lists, quotes and
 // the like kept as text), for places that only show plain text, like Archivium's
-// sheet view. For bodies of plain paragraphs, it's the same as textFromBody.
+// sheet view. For bodies of plain paragraphs, it's the same as textFromBody, except
+// that blank lines at the end (like the empty paragraph the editor keeps there, to
+// type after a list) are left out.
 export function plainTextOf(body: Body): string {
   const inline = (node: BodyNode): string => {
     if (node.type === 'text') return body.text.slice(node.start ?? 0, node.end ?? 0);
@@ -77,7 +79,7 @@ export function plainTextOf(body: Body): string {
     }
   };
   const blocks = (nodes: BodyNode[]): string => nodes.map(block).join('\n');
-  return blocks(body.structure);
+  return blocks(body.structure).replace(/\n+$/, '');
 }
 
 // Whether two bodies hold the same thing, however they were stored (the database may
