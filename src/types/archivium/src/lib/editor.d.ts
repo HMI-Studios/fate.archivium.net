@@ -28,3 +28,6 @@ export function editorExtensions(
   collabOptions?: { ydoc: Y.Doc, field?: string, provider: HocuspocusProvider },
   imageExtension?: Extendable,
 ): Extensions;
+
+// An href as the editor stores it (like "@item" for one of the universe's items) as a URL.
+export function shorthandResolver(href: string, ctx: TiptapContext | undefined): { href: string, exists?: boolean };

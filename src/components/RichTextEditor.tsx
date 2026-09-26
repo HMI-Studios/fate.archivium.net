@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 // Archivium's own editor extensions and document format, from the pinned `archivium`
 // dependency. This module is loaded on demand, through RichText.tsx.
-import { editorExtensions, type TiptapContext } from 'archivium/src/lib/editor';
+import { editorExtensions, shorthandResolver, type TiptapContext } from 'archivium/src/lib/editor';
 import { indexedToJson, jsonToIndexed } from 'archivium/src/lib/tiptapHelpers';
 import { ARCHIVIUM_URL } from '../App';
 import { asBody, sameBody, type Body } from '../fate/body';
@@ -81,15 +81,15 @@ function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, r
   // What this editor last reported, to tell its own changes from outside ones.
   const emitted = useRef<Body>(value);
 
+  const [context] = useState<TiptapContext>(() => ({
+    currentUniverse: campaign,
+    universeLink: universe => `${ARCHIVIUM_URL}/universes/${universe}`,
+    // Links to other campaigns' items aren't checked.
+    itemExists: (universe, item) => universe !== campaign || item in items,
+    headings: [],
+    items: () => items,
+  }));
   const [extensions] = useState<Extensions>(() => {
-    const context: TiptapContext = {
-      currentUniverse: campaign,
-      universeLink: universe => `${ARCHIVIUM_URL}/universes/${universe}`,
-      // Links to other campaigns' items aren't checked.
-      itemExists: (universe, item) => universe !== campaign || item in items,
-      headings: [],
-      items: () => items,
-    };
     const all = editorExtensions(true, context, live && { ydoc: live.ydoc, field: 'main', provider: live.provider });
     return [
       ...(article ? all : all.filter(extension => !ARTICLE_ONLY.has((extension as { name?: string }).name ?? ''))),
@@ -163,13 +163,13 @@ function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, r
 
   return <div className='fate-rich'>
     <style>{RICH_TEXT_CSS}</style>
-    {editor && !readOnly && <SelectionMenu editor={editor} />}
+    {editor && !readOnly && <SelectionMenu editor={editor} context={context} />}
     <EditorContent editor={editor} />
   </div>;
 }
 
 // Formatting for selected text, mostly for touch screens (no shortcuts there).
-function SelectionMenu({ editor }: { editor: Editor }) {
+function SelectionMenu({ editor, context }: { editor: Editor, context: TiptapContext }) {
   const state = useEditorState({
     editor,
     selector: ({ editor }) => ({
@@ -178,6 +178,7 @@ function SelectionMenu({ editor }: { editor: Editor }) {
       strike: editor.isActive('strike'),
       bulletList: editor.isActive('bulletList'),
       orderedList: editor.isActive('orderedList'),
+      link: selectedLink(editor, context),
     }),
   });
   const button = (icon: string, title: string, active: boolean, run: () => void) => <button
@@ -195,5 +196,26 @@ function SelectionMenu({ editor }: { editor: Editor }) {
     {button('strikethrough_s', 'Strikethrough (Ctrl+Shift+S)', state.strike, () => editor.chain().focus().toggleStrike().run())}
     {button('format_list_bulleted', 'Bullet list (Ctrl+Shift+8)', state.bulletList, () => editor.chain().focus().toggleBulletList().run())}
     {button('format_list_numbered', 'Numbered list (Ctrl+Shift+7)', state.orderedList, () => editor.chain().focus().toggleOrderedList().run())}
+    {state.link && button('open_in_new', 'Open link', false, () => window.open(state.link!, '_blank', 'noopener'))}
   </BubbleMenu>;
+}
+
+// Where the selected text links to, when it's all (part of) one link. Only web links
+// are opened.
+function selectedLink(editor: Editor, context: TiptapContext): string | null {
+  const { state } = editor;
+  const { from, to } = state.selection;
+  const hrefs = new Set<unknown>();
+  state.doc.nodesBetween(from, to, node => {
+    if (!node.isText) return;
+    hrefs.add(node.marks.find(mark => mark.type.name === 'link')?.attrs.href);
+  });
+  const [href] = hrefs;
+  if (hrefs.size !== 1 || typeof href !== 'string' || !href) return null;
+  try {
+    const url = new URL(shorthandResolver(href, context).href, location.href);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
 }
