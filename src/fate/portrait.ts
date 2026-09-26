@@ -5,6 +5,9 @@ import { ARCHIVIUM_URL } from '../App';
 // which one (obj_data.fate.portrait = gallery image id).
 
 export const PORTRAIT_KEY = 'portrait';
+// The gallery image a portrait was cropped from, so it can be cropped again from the whole
+// picture; portraits cropped from a new upload have none (only the crop is uploaded).
+export const PORTRAIT_SOURCE_KEY = 'portraitSource';
 
 export type GalleryImage = {
   id: number;
@@ -18,8 +21,8 @@ const itemUrl = (campaign: string, item: string) => `${ARCHIVIUM_URL}/api/univer
 
 export const galleryImageUrl = (campaign: string, item: string, imageId: number) => `${itemUrl(campaign, item)}/gallery/images/${imageId}`;
 
-export function portraitId(sheet: unknown): number | null {
-  const value = sheet && typeof sheet === 'object' ? (sheet as Record<string, unknown>)[PORTRAIT_KEY] : undefined;
+export function portraitId(sheet: unknown, key = PORTRAIT_KEY): number | null {
+  const value = sheet && typeof sheet === 'object' ? (sheet as Record<string, unknown>)[key] : undefined;
   return typeof value === 'number' ? value : null;
 }
 

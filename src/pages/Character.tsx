@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
-import { portraitId, PORTRAIT_KEY, type GalleryImage } from '../fate/portrait';
+import { portraitId, PORTRAIT_KEY, PORTRAIT_SOURCE_KEY, type GalleryImage } from '../fate/portrait';
 import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import PortraitSlot from '../components/PortraitSlot';
@@ -126,11 +126,12 @@ export default function Character() {
       characterShortname={characterShortname}
       title={title}
       portrait={portraitId(data)}
+      portraitSource={portraitId(data, PORTRAIT_SOURCE_KEY)}
       gallery={gallery}
       hasGalleryTab={hasGalleryTab}
-      onChange={portrait => {
-        const { [PORTRAIT_KEY]: _, ...rest } = (data ?? {}) as Record<string, unknown>;
-        const next = portrait === null ? rest : { ...rest, [PORTRAIT_KEY]: portrait };
+      onChange={(portrait, source) => {
+        const { [PORTRAIT_KEY]: _, [PORTRAIT_SOURCE_KEY]: _source, ...rest } = (data ?? {}) as Record<string, unknown>;
+        const next = portrait === null ? rest : { ...rest, [PORTRAIT_KEY]: portrait, ...(source !== null ? { [PORTRAIT_SOURCE_KEY]: source } : {}) };
         setData(next);
         save(next);
       }}
