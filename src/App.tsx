@@ -14,6 +14,7 @@ import NewItem from './pages/NewItem';
 import Map from './pages/Map';
 import Room from './pages/Room';
 import { ThemeProvider } from './theme';
+import CampaignUpgrade from './components/CampaignUpgrade';
 
 // Local test servers talk to dev Archivium (main only accepts requests from its own
 // sites); the deployed app, and anything else, talks to main.
@@ -73,6 +74,7 @@ export default function App() {
   
   return (
     <ThemeProvider user={user}>
+      <CampaignUpgrade user={user} />
       <Routes>
         {/* The game room and maps fill the window, with their own top bar. */}
         <Route path='campaigns/:campaignShortname/play' element={<Room user={user} />} />

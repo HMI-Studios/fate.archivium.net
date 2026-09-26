@@ -3,6 +3,7 @@ import { ARCHIVIUM_URL } from '../App';
 import { Link, useNavigate } from 'react-router';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { FATE_UNIVERSE_DATA } from '../fate/universeData';
+import { FATE_SCHEMA_KEY, initialSchemaRecord } from '../fate/schema';
 import { toShortname } from '../util';
 
 type NewCampaign = {
@@ -29,6 +30,8 @@ export default function NewCampaign() {
       isFateCampaign: true,
       // Character and scene sheet layouts for Archivium to render; see fate/universeData.ts.
       ...FATE_UNIVERSE_DATA,
+      // Which version of those layouts it has, for upgrading it later (fate/schema.ts).
+      [FATE_SCHEMA_KEY]: initialSchemaRecord(),
       cats: {
         npc: [
           "NPC",
