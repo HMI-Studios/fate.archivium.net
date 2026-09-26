@@ -6,6 +6,7 @@ import { FullScreen, TopBar, MenuButton } from '../components/PlayLayout';
 import SceneCanvas from '../components/SceneCanvas';
 import { isLive, useSyncedDoc } from '../sync';
 import { isGameMaster } from '../perms';
+import { GM_VAULT, setVisibility } from '../fate/vaults';
 import { usePageTitle } from '../pageTitle';
 import type { Campaign } from './Campaign';
 
@@ -13,6 +14,9 @@ import type { Campaign } from './Campaign';
 type SceneItem = {
   shortname: string;
   title: string;
+  // The vault it's in, if any: then players can't open it at all (see fate/vaults.ts).
+  vault_short?: string | null;
+  vault?: string | null;
 };
 
 // What the table as a whole is looking at. Persisted to the universe's obj_data so
@@ -34,6 +38,9 @@ export default function Room({ user }: Props) {
   const [liveActiveScene, setLiveActiveScene] = useState<string | null | undefined>(undefined);
   // The scene the GM has open, which may differ from what the players see.
   const [editingScene, setEditingScene] = useState<string | null>(null);
+  // A scene being hidden or unhidden, and why the last attempt failed, if it did.
+  const [moving, setMoving] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!campaignShortname) return;
@@ -70,10 +77,8 @@ export default function Room({ user }: Props) {
   const isGM = campaign ? isGameMaster(campaign, user) : false;
   const activeScene = liveActiveScene !== undefined ? liveActiveScene : (savedRoom?.activeScene ?? null);
   const sceneTitle = (shortname: string | null) => scenes?.find(s => s.shortname === shortname)?.title ?? shortname;
-  // Hiding is only soft for now: players' screens only ever load the active scene,
-  // but they can still read other scenes through the API. When Archivium can hide
-  // items, unrevealed scenes should be hidden there too; `scene/` docs already
-  // defer to item permissions, so this view needs no change for that.
+  // Players' screens only ever load the live scene, but they can read the others
+  // through the API (and Archivium) unless a GM hides them in the GMs' vault.
   const shownScene = isGM ? editingScene ?? activeScene : activeScene;
   usePageTitle(shownScene ? sceneTitle(shownScene) : 'Game room', campaign?.title ?? campaignShortname);
 
@@ -98,6 +103,29 @@ export default function Room({ user }: Props) {
     });
   };
 
+  const isHidden = (shortname: string) => Boolean(scenes.find(s => s.shortname === shortname)?.vault_short);
+
+  // Moves a scene into the GMs' vault, or out of it. A hidden scene is taken off the
+  // players' screens first: live docs only check who may read them when they connect,
+  // so anyone still connected would keep getting its changes.
+  const setHidden = async (shortname: string, hidden: boolean): Promise<boolean> => {
+    setMoving(shortname);
+    setMoveError(null);
+    try {
+      if (hidden && shortname === activeScene) await showToPlayers(null);
+      await setVisibility(campaignShortname, shortname, hidden ? { kind: 'gms' } : { kind: 'everyone' }, true);
+      setScenes(current => current && current.map(s => s.shortname === shortname
+        ? { ...s, vault_short: hidden ? GM_VAULT : null, vault: hidden ? 'GMs only' : null }
+        : s));
+      return true;
+    } catch (e) {
+      setMoveError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setMoving(null);
+    }
+  };
+
   const scenesMenu = isGM && (
     <MenuButton label='Scenes'>
       {close => <div className='d-flex flex-col gap-2'>
@@ -113,16 +141,29 @@ export default function Room({ user }: Props) {
                   style={{ fontWeight: isOpen ? 'bold' : undefined, cursor: 'pointer' }}
                   onClick={() => { setEditingScene(scene.shortname); close(); }}
                 >
+                  {scene.vault_short && <span title={`Hidden: only ${scene.vault ?? 'its vault'} can open it`}>🔒 </span>}
                   {scene.title}{isActive && ' (live)'}
                 </a>
-                {!isActive && isOpen && (
-                  <button disabled={!canDrive} onClick={() => showToPlayers(scene.shortname)}>Show to players</button>
-                )}
+                {isOpen && <div className='d-flex gap-1 flex-wrap'>
+                  {!isActive && <button
+                    disabled={!canDrive || moving !== null}
+                    title={scene.vault_short ? "Lets players open it again, and shows it to them" : undefined}
+                    onClick={async () => { if (!scene.vault_short || await setHidden(scene.shortname, false)) showToPlayers(scene.shortname); }}
+                  >{scene.vault_short ? 'Unhide and show to players' : 'Show to players'}</button>}
+                  <button
+                    disabled={moving !== null || (isActive && !canDrive)}
+                    title={scene.vault_short
+                      ? 'Takes it out of the GMs’ vault, so players can open it (it still isn’t shown until you show it)'
+                      : 'Moves it into the GMs’ vault, so players can’t open it at all, even in Archivium'}
+                    onClick={() => setHidden(scene.shortname, !scene.vault_short)}
+                  >{moving === scene.shortname ? 'Saving…' : scene.vault_short ? 'Unhide' : isActive ? 'Stop showing and hide' : 'Hide from players'}</button>
+                </div>}
               </li>
             );
           })}
         </ul>
-        {activeScene && <button disabled={!canDrive} onClick={() => showToPlayers(null)}>Hide scene from players</button>}
+        {moveError && <small className='color-error'>{moveError}</small>}
+        {activeScene && <button disabled={!canDrive} onClick={() => showToPlayers(null)}>Show players nothing</button>}
         <div className='d-flex flex-col gap-1'>
           <Link className='link link-animated' to={`/campaigns/${campaignShortname}/maps/new`}>New scene</Link>
           {shownScene && <a className='link link-animated' href={archiviumItemUrl(campaignShortname, shownScene)}>Prepare this scene in Archivium</a>}
@@ -137,7 +178,7 @@ export default function Room({ user }: Props) {
     <Link className='link link-animated' to={`/campaigns/${campaignShortname}`} title='Back to the campaign'>‹ {campaign.title}</Link>
     {scenesMenu}
     {shownScene && <b style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sceneTitle(shownScene)}</b>}
-    {isGM && shownScene && shownScene !== activeScene && <small>(players can't see this)</small>}
+    {isGM && shownScene && shownScene !== activeScene && <small>{isHidden(shownScene) ? '(hidden: GMs only)' : "(players can't see this)"}</small>}
     {isGM && shownScene && shownScene === activeScene && <small>(live)</small>}
   </>;
   const headerEnd = room?.status === 'offline' && (
