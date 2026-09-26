@@ -548,7 +548,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
+      // Typing anywhere, including rich-text editors (like the notes'), isn't a shortcut.
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA' || (active as HTMLElement).isContentEditable)) return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length) deleteSelected();
       if (e.key === 'Escape') setSelectedIds([]);
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
