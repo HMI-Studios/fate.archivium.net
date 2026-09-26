@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Route, Routes } from 'react-router';
+import { Route, Routes, useLocation } from 'react-router';
 import Navbar from './components/Navbar';
 import Campaign from './pages/Campaign';
 import CampaignSettings from './pages/CampaignSettings';
@@ -15,6 +15,8 @@ import Map from './pages/Map';
 import Room from './pages/Room';
 import { ThemeProvider } from './theme';
 import CampaignUpgrade from './components/CampaignUpgrade';
+import CampaignGate from './components/CampaignGate';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Local test servers talk to dev Archivium (main only accepts requests from its own
 // sites); the deployed app, and anything else, talks to main.
@@ -24,6 +26,7 @@ export const ARCHIVIUM_URL = LOCAL_HOSTS.includes(window.location.hostname)
   : 'https://archivium.net';
 
 export default function App() {
+  const { pathname } = useLocation();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   // Set when Archivium couldn't be reached, so we can offer to try again instead of loading forever.
@@ -75,25 +78,33 @@ export default function App() {
   return (
     <ThemeProvider user={user}>
       <CampaignUpgrade user={user} />
-      <Routes>
-        {/* The game room and maps fill the window, with their own top bar. */}
-        <Route path='campaigns/:campaignShortname/play' element={<Room user={user} />} />
-        <Route path='campaigns/:campaignShortname/maps/:mapShortname' element={<Map user={user} />} />
-        <Route element={<Navbar user={user} />}>
-          <Route index element={<Home user={user} />} />
-          <Route path='new' element={<NewCampaign />} />
-          <Route path='campaigns'>
-            <Route path=':campaignShortname' element={<Campaign user={user} />} />
-            <Route path=':campaignShortname/settings' element={<CampaignSettings user={user} />} />
-            <Route path=':campaignShortname/players' element={<Players user={user} />} />
-            <Route path=':campaignShortname/journal' element={<JournalPage user={user} />} />
-            <Route path=':campaignShortname/join' element={<JoinCampaign user={user} />} />
-            <Route path=':campaignShortname/items/new' element={<NewItem />} />
-            <Route path=':campaignShortname/characters/:characterShortname' element={<Character user={user} />} />
-            <Route path=':campaignShortname/maps/new' element={<NewItem fixedType='location' />} />
+      <ErrorBoundary key={pathname}>
+        <Routes>
+          {/* The game room and maps fill the window, with their own top bar. */}
+          <Route element={<CampaignGate fullScreen />}>
+            <Route path='campaigns/:campaignShortname/play' element={<Room user={user} />} />
+            <Route path='campaigns/:campaignShortname/maps/:mapShortname' element={<Map user={user} />} />
           </Route>
-        </Route>
-      </Routes>
+          <Route element={<Navbar user={user} />}>
+            <Route index element={<Home user={user} />} />
+            <Route path='new' element={<NewCampaign />} />
+            <Route path='campaigns'>
+              {/* Where people who aren't in a campaign yet join it. */}
+              <Route path=':campaignShortname/join' element={<JoinCampaign user={user} />} />
+              {/* The rest need the campaign to be readable. */}
+              <Route element={<CampaignGate />}>
+                <Route path=':campaignShortname' element={<Campaign user={user} />} />
+                <Route path=':campaignShortname/settings' element={<CampaignSettings user={user} />} />
+                <Route path=':campaignShortname/players' element={<Players user={user} />} />
+                <Route path=':campaignShortname/journal' element={<JournalPage user={user} />} />
+                <Route path=':campaignShortname/items/new' element={<NewItem />} />
+                <Route path=':campaignShortname/characters/:characterShortname' element={<Character user={user} />} />
+                <Route path=':campaignShortname/maps/new' element={<NewItem fixedType='location' />} />
+              </Route>
+            </Route>
+          </Route>
+        </Routes>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }
