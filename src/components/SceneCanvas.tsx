@@ -826,9 +826,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   // Tags beside a token: its character's sheet's temporary aspects, then the scene's.
   // A monster token only has its own scene aspects.
+  // A character's own aspects are only shown while they have free invokes on them.
   const tokenTags = (token: TokenShape): { name: string, freeInvokes: number }[] => {
-    if (isMonster(token)) return [...consequenceAspects[tokenActorKey(token.id)] ?? [], ...aspects.filter(a => a.target === tokenActorKey(token.id))];
+    const key = isMonster(token) ? tokenActorKey(token.id) : token.itemShortname;
+    const invokedOwn = (characterAspects[key] ?? []).filter(a => a.freeInvokes > 0);
+    if (isMonster(token)) return [...invokedOwn, ...consequenceAspects[key] ?? [], ...aspects.filter(a => a.target === key)];
     return [
+      ...invokedOwn,
       ...(sheetAspects[token.itemShortname] ?? []).filter(a => a.name).map(a => ({ name: a.name!, freeInvokes: sheetInvokes(a) })),
       ...consequenceAspects[token.itemShortname] ?? [],
       ...aspects.filter(a => a.target === token.itemShortname),
@@ -841,7 +845,6 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const invokableAspects: InvokableAspect[] = [
     // In the order the aspects pane lists them: a character's own aspects, their
     // consequences, their temporary aspects, then the scene's aspects on them.
-    // Invoking a character's own aspect always costs a fate point.
     ...Object.values(characterAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
     ...Object.values(consequenceAspects).flat().map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.targetTitle ?? titleOf(a.target!) })),
     // (Only PCs' and NPCs' sheets: a monster's sheet aspects belong to no token in particular.)
