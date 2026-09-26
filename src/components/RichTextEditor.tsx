@@ -154,7 +154,9 @@ function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, r
     editor.commands.setContent(indexedToJson(value), { emitUpdate: false });
   }, [value, live, editor]);
 
-  useEffect(() => { editor?.setEditable(!readOnly); }, [editor, readOnly]);
+  // Without emitting an update (which it does by default), or every editor would
+  // report a change as it appears, and the sheet would be saved on every visit.
+  useEffect(() => { editor?.setEditable(!readOnly, false); }, [editor, readOnly]);
 
   // After the editor's cursor extension has announced its own default.
   useEffect(() => {
