@@ -14,6 +14,7 @@ import StuntList from '../components/StuntList';
 import TakeHitDialog from '../components/TakeHitDialog';
 import VisibilityControls from '../components/VisibilityControls';
 import { claimOf, type Claim } from '../fate/vaults';
+import { PERMS } from '../perms';
 import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
 import { aspectsForLayout } from '../fate/aspects';
@@ -38,6 +39,16 @@ function readNotesOpen(): boolean {
     return false;
   }
 }
+
+// For sheets the viewer can't change: fields read as text rather than greyed-out
+// inputs, and the layout editor's add/remove controls go.
+const READ_ONLY_CSS = `
+.sheet-readonly .tab-layout button,
+.sheet-readonly .tab-layout select[aria-label^="Add at"] { display: none; }
+.sheet-readonly .tab-layout :is(input, select, textarea):disabled { opacity: 1; color: var(--text-color); cursor: default; }
+.sheet-readonly .tab-layout select:disabled { appearance: none; }
+.sheet-readonly .tab-layout input:disabled::placeholder { color: transparent; }
+`;
 
 export default function Character({ user }: { user: any }) {
   const { campaignShortname, characterShortname } = useParams();
@@ -128,10 +139,13 @@ export default function Character({ user }: { user: any }) {
     </div>
   </>;
 
+  // Spectators (and visitors to public campaigns) see the sheet but can't change it.
+  const canEdit = Boolean(user && universe && (universe.author_permissions[user.id] ?? 0) >= PERMS.WRITE);
+
   // Only the parts of the sheet the user changed are saved, over the latest copy,
   // so changes made elsewhere meanwhile (e.g. from a scene) are kept.
   const save = (next: unknown) => {
-    if (!campaignShortname || !characterShortname) return;
+    if (!campaignShortname || !characterShortname || !canEdit) return;
     setSaveStatus('saving');
     debounce('character-save', async () => {
       try {
@@ -149,8 +163,8 @@ export default function Character({ user }: { user: any }) {
   // The Take a hit button goes under the sheet's last stress track.
   const lastTrack = layout.rows.flatMap(row => row.sections.flatMap(section => section.fields)).filter(field => field.widget === 'checkTrack').pop();
 
-  return <div className='d-flex flex-col gap-3'>
-    <style>{LAYOUT_TAB_CSS}</style>
+  return <div className={`d-flex flex-col gap-3${canEdit ? '' : ' sheet-readonly'}`}>
+    <style>{LAYOUT_TAB_CSS}{READ_ONLY_CSS}</style>
     <div className='d-flex justify-between align-center flex-wrap gap-2'>
       <Breadcrumbs campaign={campaignShortname} current={title} />
       <div className='d-flex align-center gap-3 flex-wrap'>
@@ -172,6 +186,7 @@ export default function Character({ user }: { user: any }) {
         {saveStatus === 'saving' && 'Saving...'}
         {saveStatus === 'saved' && 'Saved'}
         {saveStatus === 'error' && 'Failed to save changes.'}
+        {!canEdit && 'Read only: only players and GMs can change this sheet.'}
       </span>
     </div>
     {/* Sheet layouts have no image field, so the portrait sits beside the sheet in this app only. */}
@@ -192,9 +207,13 @@ export default function Character({ user }: { user: any }) {
         setGallery(next);
         setHasGalleryTab(true);
       }}
+      readOnly={!canEdit}
       /></div>
       <button type='button' style={{ whiteSpace: 'nowrap' }} aria-pressed={notesOpen} onClick={() => toggleNotes(!notesOpen)} title='Your own notes on this character, which only you can see'>My notes</button>
     </div>}
+    {/* The layout editor (shared with Archivium) has no read-only mode: a disabled
+        fieldset turns its inputs off, and READ_ONLY_CSS hides its add and remove buttons. */}
+    <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
     <LayoutTabEditor
       layout={layout}
       data={data}
@@ -204,7 +223,7 @@ export default function Character({ user }: { user: any }) {
         save(next);
       }}
       renderField={(field, { id, data, set, standard }) => {
-        if (field === lastTrack) return <>
+        if (field === lastTrack && canEdit) return <>
           {standard}
           <div>
             <button type='button' onClick={() => setTakingHit(true)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
@@ -221,6 +240,7 @@ export default function Character({ user }: { user: any }) {
             entries={entryListValues(field, data)}
             onChange={entries => set(field.path, entries)}
             single={field.path === 'highConcept' || field.path === 'trouble'}
+            readOnly={!canEdit}
           />;
         }
         // Stunts are picked from, or added to, the campaign's shared stunts.
@@ -236,9 +256,11 @@ export default function Character({ user }: { user: any }) {
           onChange={entries => set(field.path, entries)}
           live={liveStunts}
           onLive={updateLiveStunt}
+          readOnly={!canEdit}
         />;
       }}
     />
+    </fieldset>
     {/* Floats over the sheet, so it stays in view while scrolling through it (outside
         the page's glass pane, whose blur would otherwise pin it to the pane). */}
     {notesOpen && campaignShortname && characterShortname && createPortal(<div style={{

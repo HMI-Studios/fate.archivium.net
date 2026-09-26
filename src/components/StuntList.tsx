@@ -194,17 +194,19 @@ type Props = {
   // The linked stunts' current text, by shortname.
   live: { [shortname: string]: Stunt },
   onLive: (stunt: Stunt) => void,
+  // Just shows the stunts, for people who can't change the character.
+  readOnly?: boolean,
 };
 
 // The sheet's stunts, each either linked to one of the campaign's stunt items or
 // (for stunts written before they were shared) just text on this sheet.
-export default function StuntList({ editor, field, id, campaign, universeObjData, entries, onChange, live, onLive }: Props) {
+export default function StuntList({ editor, field, id, campaign, universeObjData, entries, onChange, live, onLive, readOnly = false }: Props) {
   const [catalog, setCatalog] = useState<StuntSummary[]>([]);
   const [creating, setCreating] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadCatalog = () => listStunts(campaign).then(setCatalog).catch(() => {});
-  useEffect(() => { loadCatalog(); }, [campaign]);
+  useEffect(() => { if (!readOnly) loadCatalog(); }, [campaign, readOnly]);
 
   const setEntry = (index: number, entry: StuntEntry) => onChange(entries.map((e, i) => i === index ? entry : e));
   const linkEntry = (index: number, stunt: Stunt) => {
@@ -256,7 +258,9 @@ export default function StuntList({ editor, field, id, campaign, universeObjData
       const name = stunt?.title ?? entry.name ?? '';
       return <div key={i} className='d-flex flex-col gap-1'>
         <div className='d-flex gap-1'>
-          <StuntPicker
+          {readOnly
+            ? <input id={`${id}-${i}-name`} aria-label={`${field.itemLabel} ${i + 1}`} className='grow-1' disabled value={name} />
+            : <StuntPicker
             id={`${id}-${i}-name`}
             label={`${field.itemLabel} ${i + 1}`}
             value={creating === i ? 'Saving...' : name}
@@ -266,11 +270,20 @@ export default function StuntList({ editor, field, id, campaign, universeObjData
             disabled={creating !== null}
             onType={value => setEntry(i, { ...entry, name: value })}
             onPick={option => pick(i, option)}
-          />
-          <button type='button' onClick={() => onChange(entries.filter((_, k) => k !== i))}>Remove</button>
+          />}
+          {!readOnly && <button type='button' onClick={() => onChange(entries.filter((_, k) => k !== i))}>Remove</button>}
         </div>
         <div className='tab-layout-field'>
-          {stunt
+          {readOnly
+            ? <RichText
+              id={`${id}-${i}-description`}
+              ariaLabel={`${field.itemLabel} ${i + 1} description`}
+              campaign={campaign}
+              value={stunt?.body ?? richTextOf(entry, 'description')}
+              article={Boolean(stunt)}
+              readOnly
+            />
+            : stunt
             ? <LiveStuntText
               editor={editor}
               // A different stunt is a different document.
@@ -293,16 +306,16 @@ export default function StuntList({ editor, field, id, campaign, universeObjData
             />}
         </div>
         {shortname && <span className='tab-layout-caption'>
-          {'Shared with the campaign: changes apply to everyone who has this stunt. '}
+          {readOnly ? 'Shared with the campaign. ' : 'Shared with the campaign: changes apply to everyone who has this stunt. '}
           <a className='link link-animated' href={archiviumItemUrl(campaign, shortname)} target='_blank' rel='noreferrer'>Open in Archivium</a>
         </span>}
       </div>;
     })}
     {error && <span className='color-error'>{error}</span>}
-    <div>
+    {!readOnly && <div>
       <button type='button' onClick={() => onChange([...entries, { name: '', description: '' }])}>
         {field.addLabel}
       </button>
-    </div>
+    </div>}
   </>;
 }

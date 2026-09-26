@@ -11,11 +11,13 @@ interface Props {
   hasGalleryTab: boolean;
   onChange: (portrait: Portrait | null) => void;
   onGalleryChange: (gallery: GalleryImage[]) => void;
+  // Just shows the portrait, for people who can't change the character.
+  readOnly?: boolean;
 }
 
 const SIZE = '9rem';
 
-export default function PortraitSlot({ campaignShortname, characterShortname, title, portrait, gallery, hasGalleryTab, onChange, onGalleryChange }: Props) {
+export default function PortraitSlot({ campaignShortname, characterShortname, title, portrait, gallery, hasGalleryTab, onChange, onGalleryChange, readOnly = false }: Props) {
   const [choosing, setChoosing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -115,7 +117,7 @@ export default function PortraitSlot({ campaignShortname, characterShortname, ti
           />
           : <small style={{ opacity: 0.7 }}>No portrait</small>}
       </div>
-      <div className='d-flex flex-col gap-1'>
+      {!readOnly && <div className='d-flex flex-col gap-1'>
         <label className='d-flex flex-col gap-1'>
           <small>Upload a portrait (it's added to the character's gallery)</small>
           <input
@@ -144,8 +146,8 @@ export default function PortraitSlot({ campaignShortname, characterShortname, ti
         {uploading && <small>Uploading…</small>}
         {deleting !== null && <small>Deleting…</small>}
         {error && <small className='color-error'>{error}</small>}
-      </div>
-      {choosing && gallery.length > 0 && (
+      </div>}
+      {!readOnly && choosing && gallery.length > 0 && (
         <div className='d-flex flex-col gap-1 w-100'>
           <small style={{ opacity: 0.8 }}>
             Pick a picture to use as the portrait, or delete ones you don't need: the campaign can only hold so many images.

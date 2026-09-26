@@ -12,11 +12,12 @@ type Props = {
   onChange: (entries: Entry[]) => void,
   // Always exactly one entry (like High Concept): no add or remove buttons.
   single?: boolean,
+  readOnly?: boolean,
 };
 
 // An entry list (like the layout editor's) whose multiline parts, like aspects'
 // backstories, take rich text. See src/fate/richFields.ts for how it's stored.
-export default function RichEntryList({ field, id, campaign, entries, onChange, single = false }: Props) {
+export default function RichEntryList({ field, id, campaign, entries, onChange, single = false, readOnly = false }: Props) {
   const shown = single ? [entries[0] ?? {}] : entries;
   const setEntry = (index: number, entry: Entry) => onChange(shown.map((e, i) => i === index ? entry : e));
 
@@ -33,6 +34,7 @@ export default function RichEntryList({ field, id, campaign, entries, onChange, 
               placeholder={placeholder}
               campaign={campaign}
               value={richTextOf(entry, key)}
+              readOnly={readOnly}
               onChange={body => setEntry(i, withRichText(entry, key, body))}
             />
             : <input
@@ -40,10 +42,11 @@ export default function RichEntryList({ field, id, campaign, entries, onChange, 
               aria-label={`${label} ${placeholder}`}
               placeholder={placeholder}
               className='grow-1'
+              disabled={readOnly}
               value={typeof entry[key] === 'string' ? entry[key] as string : ''}
               onChange={({ target }) => setEntry(i, { ...entry, [key]: target.value })}
             />;
-          if (j > 0 || single) return <div key={key} className='tab-layout-field'>{input}</div>;
+          if (j > 0 || single || readOnly) return <div key={key} className='tab-layout-field'>{input}</div>;
           return <div key={key} className='d-flex gap-1'>
             {input}
             <button type='button' onClick={() => onChange(entries.filter((_, k) => k !== i))}>Remove</button>
@@ -51,7 +54,7 @@ export default function RichEntryList({ field, id, campaign, entries, onChange, 
         })}
       </div>;
     })}
-    {!single && <div>
+    {!single && !readOnly && <div>
       <button type='button' onClick={() => onChange([...entries, Object.fromEntries(field.fields.map(({ key }) => [key, '']))])}>
         {field.addLabel}
       </button>
