@@ -25,6 +25,7 @@ import DiceRoller, { SCENE_OWNER, type InvokableAspect } from './DiceRoller';
 import Journal from './Journal';
 import { FullScreen, MenuButton, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
 import SideDrawer, { DRAWER_WIDTH } from './SideDrawer';
+import PersonalNotes from './PersonalNotes';
 
 export type BaseShape = {
   id: string;
@@ -1916,6 +1917,19 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && mayEdit(selectedShapes[0]) && (
               <button onClick={() => renameToken(selectedShapes[0] as TokenShape)} title='Give this token its own name on the map (or double-click it)'>Rename</button>
             )}
+            {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && userId !== undefined && userName && (() => {
+              const token = selectedShapes[0] as TokenShape;
+              return <MenuButton label='Notes' placement='above' title={`Your own notes on ${token.itemTitle}, which only you can see`}>
+                {() => <PersonalNotes
+                  key={token.itemShortname}
+                  campaign={campaignShortname}
+                  item={token.itemShortname}
+                  itemTitle={token.itemTitle}
+                  user={{ id: userId, username: userName }}
+                  rows={8}
+                />}
+              </MenuButton>;
+            })()}
             {lockable.length > 0 && <button
               onClick={() => setLocked(lockable.map(shape => shape.id), !allLocked)}
               aria-pressed={allLocked}
