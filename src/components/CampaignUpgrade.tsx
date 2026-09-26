@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { matchPath, useLocation } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import { schemaStatus, upgradeCampaign, type LayoutQuestion } from '../fate/schema';
+import { syncVaults } from '../fate/vaults';
 import { isGameMaster } from '../perms';
 import { panelStyle } from './PlayLayout';
 
@@ -36,6 +37,9 @@ export default function CampaignUpgrade({ user }: { user: { id: number } | null 
       .then(response => response.ok ? response.json() : null)
       .then(universe => {
         if (!universe || !isGameMaster(universe, user)) return;
+        // Keeps the GMs (and players with claimed PCs) in the vaults that hide
+        // characters; see fate/vaults.ts.
+        syncVaults(campaign).catch(() => {});
         const status = schemaStatus(typeof universe.obj_data === 'string' ? JSON.parse(universe.obj_data) : universe.obj_data);
         if (!status.needed) return;
         if (status.ask.length > 0) setState({ step: 'asking', questions: status.ask });

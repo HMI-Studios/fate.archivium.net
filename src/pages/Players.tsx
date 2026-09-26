@@ -4,6 +4,7 @@ import { ARCHIVIUM_URL } from '../App';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { approveRequest, cancelInvite, denyRequest, fetchInvites, fetchRequests, inviteUser, joinLink, setPermission, userExists, type AccessListing } from '../fate/members';
 import { CAMPAIGN_ROLES, isGameMaster, PERMS, roleLabel } from '../perms';
+import { syncVaults } from '../fate/vaults';
 import type { Campaign } from './Campaign';
 
 interface Props {
@@ -108,6 +109,8 @@ export default function Players({ user }: Props) {
                 disabled={busy}
                 onChange={({ target }) => run(async () => {
                   await setPermission(campaignShortname, member.username, Number(target.value));
+                  // New GMs join the vaults of hidden characters; demoted ones leave them.
+                  await syncVaults(campaignShortname);
                   await load();
                 })}
               >
@@ -118,6 +121,7 @@ export default function Players({ user }: Props) {
                 if (!window.confirm(`Remove ${member.username} from the campaign?`)) return;
                 run(async () => {
                   await setPermission(campaignShortname, member.username, PERMS.NONE);
+                  await syncVaults(campaignShortname);
                   await load();
                 });
               }}>Remove</button>
