@@ -44,12 +44,50 @@ export const FATE_CORE_LAYOUT: TabLayout = {
     {
       sections: [
         {
+          // A one-entry entryList, same as 'aspects' below, so it renders identically
+          // (bold name, plain backstory) instead of clashing with a plain text field.
+          // The app hides its add/remove controls, so it always holds exactly one row.
+          title: 'High Concept',
+          fields: [{
+            widget: 'entryList',
+            path: 'highConcept',
+            itemLabel: 'High Concept',
+            addLabel: 'Add High Concept',
+            fields: [
+              { key: 'name', placeholder: 'High Concept' },
+              { key: 'note', placeholder: 'Backstory', multiline: true },
+            ],
+          }],
+        },
+        {
+          title: 'Trouble',
+          fields: [{
+            widget: 'entryList',
+            path: 'trouble',
+            itemLabel: 'Trouble',
+            addLabel: 'Add Trouble',
+            fields: [
+              { key: 'name', placeholder: 'Trouble' },
+              { key: 'note', placeholder: 'Backstory', multiline: true },
+            ],
+          }],
+        },
+      ],
+    },
+    {
+      sections: [
+        {
           title: 'Aspects',
-          fields: [
-            { widget: 'text', path: 'highConcept', caption: 'High Concept' },
-            { widget: 'text', path: 'trouble', caption: 'Trouble' },
-            { widget: 'textList', path: 'aspects', label: 'Aspect', count: 3 },
-          ],
+          fields: [{
+            widget: 'entryList',
+            path: 'aspects',
+            itemLabel: 'Aspect',
+            addLabel: 'Add Aspect',
+            fields: [
+              { key: 'name', placeholder: 'Aspect' },
+              { key: 'note', placeholder: 'Backstory', multiline: true },
+            ],
+          }],
         },
         {
           title: 'Skills',

@@ -10,6 +10,7 @@ import StuntList from '../components/StuntList';
 import TakeHitDialog from '../components/TakeHitDialog';
 import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
+import { migratedAspects } from '../fate/aspects';
 import { entryListValues, type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
 import LayoutTabEditor from '../layout/LayoutTabEditor';
@@ -63,7 +64,7 @@ export default function Character() {
       setHasGalleryTab(parseObjData(item.obj_data)?.gallery !== undefined);
       setLayout(sheetLayout);
       setUniverseObjData(parseObjData(campaign.obj_data));
-      const sheetData = layoutTabData(parseObjData(item.obj_data), sheetLayout.id);
+      const sheetData = migratedAspects(layoutTabData(parseObjData(item.obj_data), sheetLayout.id));
       base.current = sheetData;
       setData(sheetData);
       const stunts = sheetData[STUNTS_PATH];
@@ -152,6 +153,25 @@ export default function Character() {
             <button type='button' onClick={() => setTakingHit(true)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
           </div>
         </>;
+        // High Concept and Trouble are entryLists too (so they render just like the
+        // other aspects), but always hold exactly one row: no add/remove controls.
+        if (field.widget === 'entryList' && (field.path === 'highConcept' || field.path === 'trouble')) {
+          const entry = (entryListValues(field, data)[0] ?? {}) as Record<string, string>;
+          const setField = (key: string, value: string) => set(field.path, [{ ...entry, [key]: value }]);
+          return <div className='d-flex flex-col gap-1'>
+            {field.fields.map(({ key, placeholder, multiline }) => {
+              const props = {
+                id: `${id}-${key}`,
+                'aria-label': `${field.itemLabel} ${placeholder}`,
+                placeholder,
+                value: typeof entry[key] === 'string' ? entry[key] : '',
+              };
+              return multiline
+                ? <textarea key={key} {...props} className='tab-layout-textarea' onChange={({ target }) => setField(key, target.value)} />
+                : <input key={key} {...props} onChange={({ target }) => setField(key, target.value)} />;
+            })}
+          </div>;
+        }
         // Stunts are picked from, or added to, the campaign's shared stunts.
         if (field.widget !== 'entryList' || field.path !== STUNTS_PATH || !field.fields.some(f => f.key === 'name')) return undefined;
         if (!campaignShortname) return undefined;

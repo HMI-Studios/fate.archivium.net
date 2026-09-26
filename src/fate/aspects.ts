@@ -127,20 +127,68 @@ export const ASPECT_KINDS: { kind: AspectKind, label: string, defaultInvokes: nu
 // The kinds the panel can add.
 export const ADDABLE_ASPECT_KINDS = ASPECT_KINDS.filter(k => k.kind !== 'consequence' && k.kind !== 'character');
 
-// A character's own aspects, from the Fate Core sheet: high concept, trouble, and the rest.
-const MAIN_ASPECT_FIELDS: { path: string, label: string }[] = [
-  { path: 'highConcept', label: 'High Concept' },
-  { path: 'trouble', label: 'Trouble' },
+// A character's own aspects, from the Fate Core sheet: high concept, trouble, and the
+// rest. High Concept and Trouble are each a one-entry entryList (path 'highConcept' /
+// 'trouble'), same shape as 'aspects', so all of them render identically; the app hides
+// their add/remove controls so they always hold exactly one row.
+const MAIN_ASPECT_KEYS: { key: string, label: string }[] = [
+  { key: 'highConcept', label: 'High Concept' },
+  { key: 'trouble', label: 'Trouble' },
 ];
 export const MAIN_ASPECTS_KEY = 'aspects';
+
+// An entry's name, whether it's still the old plain string or a migrated {name, note} row.
+function aspectName(entry: unknown): string {
+  if (typeof entry === 'string') return entry;
+  if (entry && typeof entry === 'object' && typeof (entry as { name?: unknown }).name === 'string') return (entry as { name: string }).name;
+  return '';
+}
+
+function firstEntry(sheet: Record<string, unknown>, key: string): unknown {
+  const value = sheet[key];
+  return Array.isArray(value) ? value[0] : undefined;
+}
 
 export function mainAspects(sheet: Record<string, unknown> | undefined): { path: string, label: string, text: string }[] {
   if (!sheet) return [];
   const others = Array.isArray(sheet[MAIN_ASPECTS_KEY]) ? sheet[MAIN_ASPECTS_KEY] as unknown[] : [];
   return [
-    ...MAIN_ASPECT_FIELDS.map(({ path, label }) => ({ path, label, text: typeof sheet[path] === 'string' ? sheet[path] as string : '' })),
-    ...others.map((text, i) => ({ path: `${MAIN_ASPECTS_KEY}.${i}`, label: 'Aspect', text: typeof text === 'string' ? text : '' })),
+    ...MAIN_ASPECT_KEYS.map(({ key, label }) => ({ path: `${key}.0`, label, text: aspectName(firstEntry(sheet, key)) })),
+    ...others.map((entry, i) => ({ path: `${MAIN_ASPECTS_KEY}.${i}`, label: 'Aspect', text: aspectName(entry) })),
   ].filter(aspect => aspect.text.trim());
+}
+
+// Brings a sheet up to the current shape, where the extra aspects (and, more recently,
+// High Concept and Trouble) are entryLists of {name, note} rows instead of plain
+// strings, so their backstory notes show in Archivium too. Handles sheets from any
+// earlier shape: plain-string 'aspects', or 'highConcept'/'trouble' as top-level
+// strings with a sibling '<key>Note' field.
+export function migratedAspects(sheet: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...sheet };
+  let changed = false;
+
+  const others = next[MAIN_ASPECTS_KEY];
+  if (Array.isArray(others) && others.some(entry => typeof entry === 'string')) {
+    next[MAIN_ASPECTS_KEY] = others.map(entry => typeof entry === 'string' ? { name: entry, note: '' } : entry);
+    changed = true;
+  }
+
+  for (const { key } of MAIN_ASPECT_KEYS) {
+    const value = next[key];
+    if (typeof value === 'string') {
+      const noteKey = `${key}Note`;
+      next[key] = [{ name: value, note: typeof next[noteKey] === 'string' ? next[noteKey] : '' }];
+      delete next[noteKey];
+      changed = true;
+    } else if (!Array.isArray(value) || value.length === 0) {
+      // Always keep exactly one row, even for a brand new sheet, so there's
+      // something to edit.
+      next[key] = [{ name: '', note: '' }];
+      changed = true;
+    }
+  }
+
+  return changed ? next : sheet;
 }
 
 // Ids of character aspects shown in the scene panel: `main:<actor key>:<sheet path>`.
