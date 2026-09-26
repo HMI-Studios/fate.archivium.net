@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@hocuspocus/provider": "^3.4.4",
+    "archivium": "github:HMI-Studios/archivium#62cd27afbf2e5f95a488a6bf1792aa555fc57d77",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-konva": "^19.0.10",

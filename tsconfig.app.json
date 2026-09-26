@@ -22,6 +22,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
 
-    "noImplicitAny": false // Eventually set this to true
-  }
+    "noImplicitAny": false, // Eventually set this to true
+
+    /* Archivium's sources are typed by src/types/archivium instead (see its README). */
+    "paths": {
+      "archivium/*": ["./src/types/archivium/*"]
+    }
+  },
+  "include": ["src"]
 }
