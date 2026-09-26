@@ -82,7 +82,13 @@ export default function Character({ user }: { user: any }) {
       fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${characterShortname}`, { credentials: 'include' }),
     ]).then(async ([campaignResponse, itemResponse]) => {
       if (!campaignResponse.ok || !itemResponse.ok) {
-        setLoadError(`Could not load character (${itemResponse.ok ? campaignResponse.status : itemResponse.status}).`);
+        const status = itemResponse.ok ? campaignResponse.status : itemResponse.status;
+        // The campaign itself is checked before this page is shown (CampaignGate), so
+        // it's the character that can't be read: hidden in a vault, or not there
+        // (Archivium says 403 for both).
+        setLoadError(status === 403 || status === 404
+          ? "This character isn't there, or is hidden from you: the GMs can keep characters to themselves, and players can keep theirs to themselves and the GMs."
+          : `Couldn't load the character (${status}).`);
         return;
       }
       const campaign = await campaignResponse.json();
@@ -110,7 +116,11 @@ export default function Character({ user }: { user: any }) {
     });
   }, [campaignShortname, characterShortname]);
 
-  if (loadError) return <span className='color-error'>{loadError}</span>;
+  if (loadError) return <div className='d-flex flex-col gap-2'>
+    <Breadcrumbs campaign={campaignShortname} current={characterShortname} />
+    <p className='ma-0'>{loadError}</p>
+    <div><Link className='link link-animated' to={`/campaigns/${campaignShortname}`}>Back to the campaign</Link></div>
+  </div>;
 
   if (!layout || title === null) return <>
     <div style={{height: 'calc(50vh + 25px)'}} className='w-100 d-flex justify-center align-end'>
