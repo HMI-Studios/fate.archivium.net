@@ -10,7 +10,7 @@ import { useTable } from '../fate/table';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
 import { fatePoints, paidInvokeUsed, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
-import { glass, GLASS, hasBackdrop, useTheme } from '../theme';
+import { glass, GLASS, hasBackdrop, useBackdrop, usePremiumCampaign, useTheme } from '../theme';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
 import { consequenceSlots, stressTracks, takenConsequences, trackKey, withBoxToggled, withHit } from '../fate/stress';
 import { MONSTER_TYPE, TOKEN_STATES_KEY, tokenActorKey, tokenIdOfActor, tokenSheet, type TokenState } from '../fate/tokenState';
@@ -26,6 +26,7 @@ import Journal from './Journal';
 import { FullScreen, MenuButton, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
 import SideDrawer, { DRAWER_WIDTH } from './SideDrawer';
 import PersonalNotes from './PersonalNotes';
+import BackdropPicker from './BackdropPicker';
 
 export type BaseShape = {
   id: string;
@@ -209,6 +210,9 @@ type SceneMeta = {
   // Where the background image sits, in map coordinates; null for the whole map.
   // It stops matching the map once the map area is resized.
   imageRect: MapRect | null;
+  // The scene's gallery image behind the game room (on premium campaigns), in place of
+  // the theme's backdrop; null for the theme's own.
+  backdrop: number | null;
 };
 
 type MapRect = { x: number, y: number, width: number, height: number };
@@ -268,6 +272,9 @@ const TOKEN_RADIUS = 20;
 // Archivium can't delete a map's image, so removing the background only hides it:
 // the scene item remembers this flag until a new image is uploaded.
 const MAP_IMAGE_HIDDEN_KEY = 'mapImageHidden';
+
+// Where the scene item keeps its room backdrop (SceneMeta.backdrop).
+const BACKDROP_KEY = 'roomBackdrop';
 
 // A token's circle: the character's portrait clipped to it, ringed in the token's
 // color, or just the color while there's no portrait (or it hasn't loaded yet).
@@ -329,13 +336,15 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // A selection box being dragged out, in map coordinates.
   const [marquee, setMarquee] = useState<{ from: Point, to: Point, additive: boolean } | null>(null);
 
-  const [meta, setMeta] = useState<SceneMeta>({ width: 1000, height: 1000, imageStamp: null, imageRect: null });
+  const [meta, setMeta] = useState<SceneMeta>({ width: 1000, height: 1000, imageStamp: null, imageRect: null, backdrop: null });
   // Whether the GM is dragging the map area's edges.
   const [resizingMap, setResizingMap] = useState(false);
   const mapAreaRef = useRef<Konva.Rect | null>(null);
   const mapTransformerRef = useRef<Konva.Transformer | null>(null);
   const theme = useTheme();
   const backdrop = hasBackdrop(theme);
+  const premium = usePremiumCampaign(campaignShortname);
+  useBackdrop(meta.backdrop !== null ? galleryImageUrl(campaignShortname, sceneShortname, meta.backdrop) : null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -401,14 +410,17 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       const data = await response.json();
       const objData = typeof data.obj_data === 'string' ? JSON.parse(data.obj_data) : data.obj_data;
       const area = objData?.[MAP_AREA_KEY];
-      if (data.map || area) {
-        setMeta(m => ({
+      const savedBackdrop = typeof objData?.[BACKDROP_KEY] === 'number' ? objData[BACKDROP_KEY] as number : null;
+      setMeta(m => ({
+        ...m,
+        ...(data.map || area ? {
           width: area?.width ?? data.map?.width ?? m.width,
           height: area?.height ?? data.map?.height ?? m.height,
           imageStamp: objData?.[MAP_IMAGE_HIDDEN_KEY] ? null : data.map?.image_id ?? null,
           imageRect: area?.imageRect ?? null,
-        }));
-      }
+        } : {}),
+        backdrop: savedBackdrop,
+      }));
       // Scenes saved before scene sheets kept their aspects in obj_data.sceneAspects.
       const sceneSheetAspects = layoutTabData(objData, SCENE_TAB)[SCENE_ASPECTS_KEY];
       setSavedAspects(sceneSheetAspects !== undefined ? fromSceneSheet(sceneSheetAspects) : (objData?.sceneAspects ?? []));
@@ -427,12 +439,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const updateTokenStates = () => setLiveTokenStates(Object.fromEntries(yTokenStates.entries()));
     const updateMeta = () => {
       if (!yMeta.has('width')) return;
-      setMeta({
+      setMeta(m => ({
         width: yMeta.get('width') as number,
         height: yMeta.get('height') as number,
         imageStamp: (yMeta.get('imageStamp') as number | null) ?? null,
         imageRect: (yMeta.get('imageRect') as MapRect | null) ?? null,
-      });
+        // Live documents from before backdrops don't have one yet: keep the saved one.
+        backdrop: yMeta.has('backdrop') ? (yMeta.get('backdrop') as number | null) ?? null : m.backdrop,
+      }));
     };
     yShapes.observe(updateShapes);
     yMeta.observe(updateMeta);
@@ -460,6 +474,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           ...(yMeta.has('width') ? {
             [MAP_AREA_KEY]: { width: yMeta.get('width'), height: yMeta.get('height'), imageRect: yMeta.get('imageRect') ?? null },
           } : {}),
+          ...(yMeta.has('backdrop') ? { [BACKDROP_KEY]: yMeta.get('backdrop') ?? null } : {}),
         };
         try {
           await updateLayoutTab(
@@ -512,6 +527,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         yMeta.set('imageStamp', meta.imageStamp);
         yMeta.set('imageRect', meta.imageRect);
       }
+      if (!yMeta.has('backdrop')) yMeta.set('backdrop', meta.backdrop);
     });
   }, [canEdit, ydoc, savedShapes]);
 
@@ -1942,7 +1958,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           </>}
           {canEdit && gm && <>
             {divider}
-            <MenuButton label={uploading ? 'Uploading…' : 'Map'} placement='above' title="The map's background image and size">
+            <MenuButton label={uploading ? 'Uploading…' : 'Map'} placement='above' title="The map's background image and size, and the room's backdrop" width='min(20rem, calc(100vw - 1rem))'>
               {close => <div className='d-flex flex-col gap-1'>
                 <button disabled={uploading} onClick={() => { close(); backgroundInput.current?.click(); }}>
                   {meta.imageStamp !== null ? 'Change background image…' : 'Set background image…'}
@@ -1951,6 +1967,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
                 <button onClick={() => { close(); setSelectedIds([]); setResizingMap(true); }} title="Drag the map area's edges to resize it">Resize map area</button>
                 <button onClick={() => { close(); fitMapToContents(); }} title='Fit the map area around everything on it'>Fit map area to contents</button>
                 {anyLocked && <button onClick={() => { close(); setLocked(shapes.filter(shape => shape.locked).map(shape => shape.id), false); }} title='Unlock everything locked on the map'>Unlock everything</button>}
+                <hr style={{ width: '100%', margin: '0.25rem 0' }} />
+                <BackdropPicker
+                  campaign={campaignShortname}
+                  scene={sceneShortname}
+                  current={meta.backdrop}
+                  premium={premium}
+                  onPick={imageId => yMeta?.set('backdrop', imageId)}
+                />
               </div>}
             </MenuButton>
             {/* Outside the menu, so it's still there when a file is picked. */}
