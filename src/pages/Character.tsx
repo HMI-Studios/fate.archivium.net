@@ -10,7 +10,7 @@ import StuntList from '../components/StuntList';
 import TakeHitDialog from '../components/TakeHitDialog';
 import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
-import { migratedAspects } from '../fate/aspects';
+import { aspectsForLayout } from '../fate/aspects';
 import { entryListValues, type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
 import LayoutTabEditor from '../layout/LayoutTabEditor';
@@ -64,7 +64,8 @@ export default function Character() {
       setHasGalleryTab(parseObjData(item.obj_data)?.gallery !== undefined);
       setLayout(sheetLayout);
       setUniverseObjData(parseObjData(campaign.obj_data));
-      const sheetData = migratedAspects(layoutTabData(parseObjData(item.obj_data), sheetLayout.id));
+      // Read in the shape of the campaign's layout, which may not have been upgraded yet.
+      const sheetData = aspectsForLayout(layoutTabData(parseObjData(item.obj_data), sheetLayout.id), sheetLayout);
       base.current = sheetData;
       setData(sheetData);
       const stunts = sheetData[STUNTS_PATH];

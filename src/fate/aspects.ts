@@ -1,3 +1,6 @@
+import type { TabLayout } from '../layout/core';
+import { FATE_CORE_LAYOUT } from './coreLayout';
+
 // Aspects in play during a scene. Most live in the scene's live doc, saved to the
 // scene's sheet (obj_data.fateScene.aspects) so they can be prepared and read in
 // Archivium. Temporary character aspects live on the character's sheet instead, so
@@ -158,38 +161,65 @@ export function mainAspects(sheet: Record<string, unknown> | undefined): { path:
   ].filter(aspect => aspect.text.trim());
 }
 
-// Brings a sheet up to the current shape, where the extra aspects (and, more recently,
-// High Concept and Trouble) are entryLists of {name, note} rows instead of plain
-// strings, so their backstory notes show in Archivium too. Handles sheets from any
-// earlier shape: plain-string 'aspects', or 'highConcept'/'trouble' as top-level
-// strings with a sibling '<key>Note' field.
-export function migratedAspects(sheet: Record<string, unknown>): Record<string, unknown> {
+type AspectRow = { name: string, note: string };
+
+function toRow(entry: unknown): AspectRow {
+  if (entry && typeof entry === 'object') {
+    const { name, note } = entry as { name?: unknown, note?: unknown };
+    if (typeof name === 'string' && typeof note === 'string') return entry as AspectRow;
+    return { ...entry as object, name: typeof name === 'string' ? name : '', note: typeof note === 'string' ? note : '' };
+  }
+  return { name: typeof entry === 'string' ? entry : '', note: '' };
+}
+
+// Puts a sheet's own aspects in the shape a layout's fields expect. Sheets from before
+// backstory notes keep High Concept and Trouble as strings (with a sibling '<key>Note'
+// from an interim version) and the other aspects as a list of strings; since then they
+// are all lists of {name, note} rows, High Concept and Trouble holding exactly one.
+// A campaign's stored layout may be either version (campaigns keep their own copy until
+// they're upgraded, see fate/schema.ts), so pages read sheets through this, and nothing
+// shows up empty. Going back to the old shape drops the notes from what's shown.
+export function aspectsForLayout(sheet: Record<string, unknown>, layout: TabLayout): Record<string, unknown> {
+  const fields = layout.rows.flatMap(row => row.sections.flatMap(section => section.fields));
   const next = { ...sheet };
   let changed = false;
-
-  const others = next[MAIN_ASPECTS_KEY];
-  if (Array.isArray(others) && others.some(entry => typeof entry === 'string')) {
-    next[MAIN_ASPECTS_KEY] = others.map(entry => typeof entry === 'string' ? { name: entry, note: '' } : entry);
+  const set = (key: string, value: unknown) => {
+    if (JSON.stringify(next[key]) === JSON.stringify(value)) return;
+    next[key] = value;
     changed = true;
-  }
+  };
 
-  for (const { key } of MAIN_ASPECT_KEYS) {
+  for (const key of [...MAIN_ASPECT_KEYS.map(k => k.key), MAIN_ASPECTS_KEY]) {
+    const field = fields.find(f => 'path' in f && f.path === key);
+    if (!field) continue;
+    const single = key !== MAIN_ASPECTS_KEY;
     const value = next[key];
-    if (typeof value === 'string') {
+    const list = Array.isArray(value) ? value : value === undefined ? [] : [value];
+
+    if (field.widget === 'entryList') {
+      const rows = list.map(toRow);
       const noteKey = `${key}Note`;
-      next[key] = [{ name: value, note: typeof next[noteKey] === 'string' ? next[noteKey] : '' }];
-      delete next[noteKey];
-      changed = true;
-    } else if (!Array.isArray(value) || value.length === 0) {
-      // Always keep exactly one row, even for a brand new sheet, so there's
-      // something to edit.
-      next[key] = [{ name: '', note: '' }];
-      changed = true;
+      if (single && typeof next[noteKey] === 'string') {
+        if (rows.length === 0) rows.push({ name: '', note: '' });
+        if (!rows[0].note) rows[0] = { ...rows[0], note: next[noteKey] as string };
+        delete next[noteKey];
+        changed = true;
+      }
+      // High Concept and Trouble always have their one row to edit.
+      if (single && rows.length === 0) rows.push({ name: '', note: '' });
+      set(key, rows);
+    } else if (field.widget === 'text') {
+      set(key, aspectName(list[0]));
+    } else if (field.widget === 'textList') {
+      set(key, list.map(aspectName));
     }
   }
 
   return changed ? next : sheet;
 }
+
+// A sheet in the current built-in layout's shape (see aspectsForLayout).
+export const migratedAspects = (sheet: Record<string, unknown>) => aspectsForLayout(sheet, FATE_CORE_LAYOUT);
 
 // Ids of character aspects shown in the scene panel: `main:<actor key>:<sheet path>`.
 export const mainAspectId = (actorKey: string, path: string) => `main:${actorKey}:${path}`;
