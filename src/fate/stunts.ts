@@ -1,7 +1,7 @@
 import { ARCHIVIUM_URL } from '../App';
 import { withDefaultTabs } from '../layout/typeConfig';
 import { toShortname } from '../util';
-import { asBody, bodyFromText, isPlainBody, textFromBody, type Body } from './body';
+import { asBody, bodyFromText, plainTextOf, type Body } from './body';
 
 // Stunts are shared across a campaign as Archivium items of the stunt category, with
 // the description as the item's body. A character sheet's stunt entry links to one by
@@ -17,10 +17,13 @@ export const STUNT_LINK_KEY = 'item';
 export type StuntSummary = { shortname: string, title: string };
 
 export type Stunt = StuntSummary & {
+  // The item's body: rich text, as Archivium's editor makes it.
+  body: Body,
+  // The body as plain text, which sheets keep a copy of.
   description: string,
-  // False when the body has formatting that editing it as plain text here would lose.
-  plain: boolean,
 };
+
+export const stuntOf = (summary: StuntSummary, body: Body): Stunt => ({ ...summary, body, description: plainTextOf(body) });
 
 const itemsUrl = (campaign: string) => `${ARCHIVIUM_URL}/api/universes/${campaign}/items`;
 
@@ -37,17 +40,17 @@ export async function listStunts(campaign: string): Promise<StuntSummary[]> {
   return items.map(({ shortname, title }) => ({ shortname, title })).sort((a, b) => a.title.localeCompare(b.title));
 }
 
-export async function fetchStunt(campaign: string, shortname: string): Promise<Stunt> {
+// The stunt's item, as the API returns it.
+export async function fetchStuntItem(campaign: string, shortname: string): Promise<Record<string, any>> {
   const response = await fetch(`${itemsUrl(campaign)}/${shortname}`, { credentials: 'include' });
   if (!response.ok) throw new Error(`Could not load the stunt ${shortname} (${response.status}).`);
-  const item = await response.json();
+  return response.json();
+}
+
+export async function fetchStunt(campaign: string, shortname: string): Promise<Stunt> {
+  const item = await fetchStuntItem(campaign, shortname);
   const body = readBody(typeof item.obj_data === 'string' ? JSON.parse(item.obj_data) : item.obj_data);
-  return {
-    shortname: item.shortname,
-    title: item.title,
-    description: body ? textFromBody(body) : '',
-    plain: body ? isPlainBody(body) : true,
-  };
+  return stuntOf({ shortname: item.shortname, title: item.title }, body ?? bodyFromText(''));
 }
 
 // A shortname for a new stunt that no existing item uses.
@@ -68,7 +71,7 @@ async function allShortnames(campaign: string): Promise<Set<string>> {
   return new Set(items.map(item => item.shortname));
 }
 
-export async function createStunt(campaign: string, universeObjData: unknown, name: string, description: string): Promise<Stunt> {
+export async function createStunt(campaign: string, universeObjData: unknown, name: string, body: Body): Promise<Stunt> {
   const title = name.trim();
   // Someone else may take the shortname between checking and creating, so try again
   // with a fresh list if creating fails and the name has meanwhile been taken.
@@ -83,30 +86,32 @@ export async function createStunt(campaign: string, universeObjData: unknown, na
         title,
         shortname,
         item_type: STUNT_CATEGORY,
-        obj_data: withDefaultTabs({ body: bodyFromText(description) }, universeObjData, STUNT_CATEGORY),
+        obj_data: withDefaultTabs({ body }, universeObjData, STUNT_CATEGORY),
       }),
     });
-    if (response.ok) return { shortname, title, description, plain: true };
+    if (response.ok) return stuntOf({ shortname, title }, body);
     if (attempt >= 2 || !(await allShortnames(campaign)).has(shortname)) {
       throw new Error(`Could not create the stunt (${response.status}).`);
     }
   }
 }
 
-// Replaces the stunt's body with plain text. The data endpoint merges top-level
-// obj_data keys, so the item's other content is kept.
-export async function saveStuntDescription(campaign: string, shortname: string, description: string): Promise<void> {
+// Replaces the stunt's body. The data endpoint merges top-level obj_data keys, so
+// the item's other content is kept.
+export async function saveStuntBody(campaign: string, shortname: string, body: Body): Promise<void> {
   const response = await fetch(`${itemsUrl(campaign)}/${shortname}/data`, {
     credentials: 'include',
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body: bodyFromText(description) }),
+    body: JSON.stringify({ body }),
   });
   if (!response.ok) throw new Error(`Could not save the stunt (${response.status}).`);
 }
 
 /* Sheet entries */
 
+// The entry's description is a plain-text copy for linked stunts; unlinked ones keep
+// rich text beside it, like aspect backstories (src/fate/richFields.ts).
 export type StuntEntry = Record<string, string>;
 
 export const linkOf = (entry: StuntEntry): string | undefined => entry[STUNT_LINK_KEY] || undefined;

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { archiviumItemUrl } from './Breadcrumbs';
-import { createStunt, fetchStunt, listStunts, type Stunt } from '../fate/stunts';
+import { bodyFromText } from '../fate/body';
+import { createStunt, fetchStunt, listStunts, stuntOf, type Stunt } from '../fate/stunts';
 
 type Props = {
   campaign: string,
@@ -26,7 +27,7 @@ export default function CampaignStunts({ campaign, universeObjData, canCreate }:
     // The item list has no bodies, so each stunt is fetched for its description.
     listStunts(campaign)
       .then(summaries => Promise.all(summaries.map(summary => fetchStunt(campaign, summary.shortname)
-        .catch(() => ({ ...summary, description: '', plain: true })))))
+        .catch(() => stuntOf(summary, bodyFromText(''))))))
       .then(loaded => { if (!cancelled) setStunts(loaded); })
       .catch(e => { if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e)); });
     return () => { cancelled = true; };
@@ -38,7 +39,7 @@ export default function CampaignStunts({ campaign, universeObjData, canCreate }:
     setCreating(true);
     setCreateError(null);
     try {
-      const stunt = await createStunt(campaign, universeObjData, name, description);
+      const stunt = await createStunt(campaign, universeObjData, name, bodyFromText(description));
       setStunts(current => [...(current ?? []), stunt].sort((a, b) => a.title.localeCompare(b.title)));
       setName('');
       setDescription('');

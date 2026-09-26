@@ -199,6 +199,7 @@ export default function Character({ user }: { user: any }) {
         if (field.widget !== 'entryList' || field.path !== STUNTS_PATH || !field.fields.some(f => f.key === 'name')) return undefined;
         if (!campaignShortname) return undefined;
         return <StuntList
+          editor={user}
           field={field}
           id={id}
           campaign={campaignShortname}

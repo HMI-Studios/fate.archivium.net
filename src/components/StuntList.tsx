@@ -1,17 +1,22 @@
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { archiviumItemUrl } from './Breadcrumbs';
+import RichText from './RichText';
 import type { EntryListField } from '../layout/core';
+import { bodyFromText, plainTextOf, type Body } from '../fate/body';
+import { richTextOf, withRichText } from '../fate/richFields';
 import {
   createStunt,
   fetchStunt,
+  fetchStuntItem,
   linkOf,
   listStunts,
-  saveStuntDescription,
+  saveStuntBody,
   STUNT_LINK_KEY,
   type Stunt,
   type StuntEntry,
   type StuntSummary,
 } from '../fate/stunts';
+import { isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 
 // How many matching stunts the picker lists at once.
@@ -138,7 +143,48 @@ function StuntPicker({ id, label, value, linked, catalog, exclude, disabled, onT
   </div>;
 }
 
+// Who's editing, as Archivium's editor shows it (by the cursor, and in its list of
+// who's there): its DocUser in editor/src/hooks/useProvider.ts.
+export type EditingUser = { username: string };
+const CURSOR_COLORS = ['#3CB371', '#DC143C', '#C71585', '#FF7F50', '#4682B4', '#808000'];
+
+type TextProps = {
+  editor: EditingUser,
+  id: string,
+  label: string,
+  campaign: string,
+  stunt: Stunt,
+  onEdit: (body: Body, remote: boolean) => void,
+};
+
+// A linked stunt's description, edited in the stunt item's live document, as in
+// Archivium's own item editor, so people editing it at once (here or in Archivium)
+// see each other's changes instead of overwriting them. If the document can't be
+// opened (e.g. the sync server is down), it's edited through the API instead.
+function LiveStuntText({ editor, id, label, campaign, stunt, onEdit }: TextProps) {
+  const doc = useSyncedDoc(`item/${campaign}/${stunt.shortname}`);
+  const live = useMemo(() => doc && {
+    ydoc: doc.ydoc,
+    provider: doc.provider,
+    loadItem: () => fetchStuntItem(campaign, stunt.shortname),
+    user: {
+      clientId: doc.provider.awareness?.clientID,
+      name: editor.username,
+      color: CURSOR_COLORS[[...editor.username].reduce((sum, c) => sum + c.charCodeAt(0), 0) % CURSOR_COLORS.length],
+      // Relative, as it's shown in Archivium's pages.
+      pfp: `/api/users/${editor.username}/pfp`,
+    },
+  }, [doc?.ydoc, editor.username]);
+  const common = { id, ariaLabel: label, placeholder: 'What the stunt does', campaign, value: stunt.body, article: true };
+  if (!doc || doc.status === 'connecting') return <RichText key='connecting' {...common} readOnly />;
+  if (isLive(doc.status) && !doc.readOnly && live) {
+    return <RichText key='live' {...common} live={live} onChange={onEdit} />;
+  }
+  return <RichText key='offline' {...common} onChange={body => onEdit(body, false)} />;
+}
+
 type Props = {
+  editor: EditingUser,
   field: EntryListField,
   id: string,
   campaign: string,
@@ -152,7 +198,7 @@ type Props = {
 
 // The sheet's stunts, each either linked to one of the campaign's stunt items or
 // (for stunts written before they were shared) just text on this sheet.
-export default function StuntList({ field, id, campaign, universeObjData, entries, onChange, live, onLive }: Props) {
+export default function StuntList({ editor, field, id, campaign, universeObjData, entries, onChange, live, onLive }: Props) {
   const [catalog, setCatalog] = useState<StuntSummary[]>([]);
   const [creating, setCreating] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -176,8 +222,8 @@ export default function StuntList({ field, id, campaign, universeObjData, entrie
       } else {
         // A new stunt starts with whatever the entry says it does, if it isn't linked yet.
         const entry = entries[index];
-        const description = linkOf(entry) ? '' : entry.description ?? '';
-        const stunt = await createStunt(campaign, universeObjData, option.name, description);
+        const body = linkOf(entry) ? bodyFromText('') : richTextOf(entry, 'description');
+        const stunt = await createStunt(campaign, universeObjData, option.name, body);
         linkEntry(index, stunt);
         setCatalog(current => [...current, stunt].sort((a, b) => a.title.localeCompare(b.title)));
         loadCatalog();
@@ -189,18 +235,16 @@ export default function StuntList({ field, id, campaign, universeObjData, entrie
     }
   };
 
-  const describe = (index: number, description: string) => {
-    const entry = entries[index];
-    const shortname = linkOf(entry);
-    const stunt = shortname ? live[shortname] : undefined;
-    if (shortname && stunt) {
-      // Changing a linked stunt changes it for everyone who has it.
-      onLive({ ...stunt, description });
-      debounce(`stunt-save-${shortname}`, () => {
-        saveStuntDescription(campaign, shortname, description).catch(e => setError(e instanceof Error ? e.message : String(e)));
-      }, 800);
-    }
-    setEntry(index, { ...entry, description });
+  // Changing a linked stunt changes it for everyone who has it. Changes someone else
+  // made are only shown: they save them, and this sheet's copy catches up when it's saved.
+  const describeLinked = (index: number, stunt: Stunt, body: Body, remote: boolean) => {
+    const description = plainTextOf(body);
+    onLive({ ...stunt, body, description });
+    if (remote) return;
+    debounce(`stunt-save-${stunt.shortname}`, () => {
+      saveStuntBody(campaign, stunt.shortname, body).catch(e => setError(e instanceof Error ? e.message : String(e)));
+    }, 800);
+    setEntry(index, { ...entries[index], description });
   };
 
   const linkedHere = new Set(entries.map(linkOf).filter((s): s is string => Boolean(s)));
@@ -210,8 +254,6 @@ export default function StuntList({ field, id, campaign, universeObjData, entrie
       const shortname = linkOf(entry);
       const stunt = shortname ? live[shortname] : undefined;
       const name = stunt?.title ?? entry.name ?? '';
-      const description = stunt?.description ?? entry.description ?? '';
-      const readOnly = Boolean(stunt && !stunt.plain);
       return <div key={i} className='d-flex flex-col gap-1'>
         <div className='d-flex gap-1'>
           <StuntPicker
@@ -228,20 +270,30 @@ export default function StuntList({ field, id, campaign, universeObjData, entrie
           <button type='button' onClick={() => onChange(entries.filter((_, k) => k !== i))}>Remove</button>
         </div>
         <div className='tab-layout-field'>
-          <textarea
-            id={`${id}-${i}-description`}
-            aria-label={`${field.itemLabel} ${i + 1} description`}
-            className='tab-layout-textarea'
-            placeholder='What the stunt does'
-            readOnly={readOnly}
-            value={description}
-            onChange={({ target }) => describe(i, target.value)}
-          />
+          {stunt
+            ? <LiveStuntText
+              editor={editor}
+              // A different stunt is a different document.
+              key={stunt.shortname}
+              id={`${id}-${i}-description`}
+              label={`${field.itemLabel} ${i + 1} description`}
+              campaign={campaign}
+              stunt={stunt}
+              onEdit={(body, remote) => describeLinked(i, stunt, body, remote)}
+            />
+            : <RichText
+              id={`${id}-${i}-description`}
+              ariaLabel={`${field.itemLabel} ${i + 1} description`}
+              placeholder='What the stunt does'
+              campaign={campaign}
+              value={richTextOf(entry, 'description')}
+              // Until a linked stunt has loaded, its copy on the sheet shows.
+              readOnly={Boolean(shortname)}
+              onChange={body => setEntry(i, withRichText(entry, 'description', body))}
+            />}
         </div>
         {shortname && <span className='tab-layout-caption'>
-          {readOnly
-            ? 'This stunt has formatting, so edit it in Archivium. '
-            : 'Shared with the campaign: changes apply to everyone who has this stunt. '}
+          {'Shared with the campaign: changes apply to everyone who has this stunt. '}
           <a className='link link-animated' href={archiviumItemUrl(campaign, shortname)} target='_blank' rel='noreferrer'>Open in Archivium</a>
         </span>}
       </div>;
