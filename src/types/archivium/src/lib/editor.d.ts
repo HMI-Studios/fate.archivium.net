@@ -1,4 +1,8 @@
-import type { Extensions } from '@tiptap/core';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
+import type { Extendable, Extensions } from '@tiptap/core';
+import type * as Y from 'yjs';
+// The editor's commands (toggleBold and so on) are declared by the extensions it uses.
+import type {} from '@tiptap/starter-kit';
 
 export interface TiptapContext {
   currentUniverse: string | null;
@@ -18,4 +22,9 @@ export type LinkData = {
 
 export function extractLinkData(href: string): LinkData;
 
-export function editorExtensions(editMode: boolean, context?: TiptapContext): Extensions;
+export function editorExtensions(
+  editMode: boolean,
+  context?: TiptapContext,
+  collabOptions?: { ydoc: Y.Doc, field?: string, provider: HocuspocusProvider },
+  imageExtension?: Extendable,
+): Extensions;

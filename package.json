@@ -29,6 +29,9 @@
   },
   "dependencies": {
     "@hocuspocus/provider": "^3.4.4",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extensions": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
     "archivium": "github:HMI-Studios/archivium#62cd27afbf2e5f95a488a6bf1792aa555fc57d77",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
