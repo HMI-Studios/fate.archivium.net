@@ -4,8 +4,10 @@ import { ARCHIVIUM_URL } from '../App';
 import { FATE_CORE_LAYOUT_ID } from '../fate/coreLayout';
 import { galleryImageUrl, portraitId } from '../fate/portrait';
 import { layoutTabData } from '../fate/sheetData';
+import { claimOf, type Claim } from '../fate/vaults';
 
-type Item = { shortname: string, title: string };
+// `vault` is the title of the vault hiding it, if any (see fate/vaults.ts).
+type Item = { shortname: string, title: string, vault?: string | null };
 
 type Props = {
   campaign: string,
@@ -14,10 +16,12 @@ type Props = {
   color?: string,
 };
 
-// Portrait ids by character shortname. The item list has no sheet data, so each
-// character is fetched for it; ones that can't be read just have no portrait.
-function usePortraits(campaign: string, items: Item[]): { [shortname: string]: number | null } {
-  const [portraits, setPortraits] = useState<{ [shortname: string]: number | null }>({});
+type Details = { portrait: number | null, claim: Claim | null };
+
+// Portrait ids and players by character shortname. The item list has no sheet data, so
+// each character is fetched for it; ones that can't be read just have no portrait.
+function useDetails(campaign: string, items: Item[]): { [shortname: string]: Details } {
+  const [portraits, setPortraits] = useState<{ [shortname: string]: Details }>({});
   const key = items.map(item => item.shortname).join(',');
 
   useEffect(() => {
@@ -28,10 +32,10 @@ function usePortraits(campaign: string, items: Item[]): { [shortname: string]: n
           if (!response.ok) return null;
           const item = await response.json();
           const objData = typeof item.obj_data === 'string' ? JSON.parse(item.obj_data) : item.obj_data;
-          return portraitId(layoutTabData(objData, FATE_CORE_LAYOUT_ID));
+          return { portrait: portraitId(layoutTabData(objData, FATE_CORE_LAYOUT_ID)), claim: claimOf(objData) };
         })
         .catch(() => null)
-        .then(id => { if (!cancelled) setPortraits(current => ({ ...current, [shortname]: id })); });
+        .then(details => { if (!cancelled) setPortraits(current => ({ ...current, [shortname]: details ?? { portrait: null, claim: null } })); });
     }
     return () => { cancelled = true; };
   }, [campaign, key]);
@@ -50,11 +54,12 @@ function textColorOn(background: string | undefined): string {
 const initials = (title: string) => title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0].toUpperCase()).join('');
 
 export default function CharacterCards({ campaign, items, color }: Props) {
-  const portraits = usePortraits(campaign, items);
+  const details = useDetails(campaign, items);
 
   return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(9rem, 1fr))', gap: '1rem' }}>
     {items.map(item => {
-      const portrait = portraits[item.shortname];
+      const portrait = details[item.shortname]?.portrait;
+      const claim = details[item.shortname]?.claim;
       return <Link
         key={item.shortname}
         to={`/campaigns/${campaign}/characters/${item.shortname}`}
@@ -75,6 +80,9 @@ export default function CharacterCards({ campaign, items, color }: Props) {
         </div>
         <div style={{ padding: '0.5rem 0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
           {item.title}
+          {(item.vault || claim) && <small style={{ display: 'block', fontWeight: 400, color: 'var(--light-text-color)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {claim && `Played by ${claim.username}`}{claim && item.vault && ' · '}{item.vault && `🔒 ${item.vault}`}
+          </small>}
         </div>
       </Link>;
     })}
