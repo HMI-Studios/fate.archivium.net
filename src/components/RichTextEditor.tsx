@@ -3,6 +3,7 @@ import type { Extensions } from '@tiptap/core';
 import { Placeholder } from '@tiptap/extensions';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { useEffect, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 // Archivium's own editor extensions and document format, from the pinned `archivium`
@@ -10,7 +11,7 @@ import type * as Y from 'yjs';
 import { editorExtensions, type TiptapContext } from 'archivium/src/lib/editor';
 import { indexedToJson, jsonToIndexed } from 'archivium/src/lib/tiptapHelpers';
 import { ARCHIVIUM_URL } from '../App';
-import { sameBody, type Body } from '../fate/body';
+import { asBody, sameBody, type Body } from '../fate/body';
 import { PlainPreview, RICH_TEXT_CSS } from './RichText';
 
 // A text box for rich text, without a toolbar: formatting comes from the usual
@@ -33,7 +34,14 @@ function loadItems(campaign: string) {
   return campaignItems[campaign];
 }
 
-export type LiveDoc = { ydoc: Y.Doc, provider: HocuspocusProvider };
+export type LiveDoc = {
+  ydoc: Y.Doc,
+  provider: HocuspocusProvider,
+  // The item as the API returns it, for filling in a document nobody has opened yet.
+  loadItem: () => Promise<Record<string, unknown>>,
+  // Who's editing, shown by their cursor and in Archivium's list of who's there.
+  user?: Record<string, unknown>,
+};
 
 export interface RichTextEditorProps {
   id?: string;
@@ -43,12 +51,12 @@ export interface RichTextEditorProps {
   // The text to show. Without `live`, a change from outside (not from this editor)
   // replaces what's in the editor.
   value: Body;
-  onChange?: (body: Body) => void;
+  // `remote` is set for changes that came in from someone else editing the live document.
+  onChange?: (body: Body, remote: boolean) => void;
   readOnly?: boolean;
   // Whole articles (like an item's body) keep everything Archivium's editor can make.
   article?: boolean;
-  // Edit an Archivium item's live document (as its own editor does) instead of
-  // `value`, which only fills the document if nobody has opened it yet.
+  // Edit an Archivium item's live document (as its own editor does) instead of `value`.
   live?: LiveDoc;
 }
 
@@ -94,23 +102,48 @@ function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, r
     editable: !readOnly,
     content: live ? undefined : indexedToJson(value),
     editorProps: { attributes: { 'aria-label': ariaLabel, ...(id ? { id } : {}) } },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
       const body = jsonToIndexed(editor.getJSON()) as Body;
       emitted.current = body;
-      onChangeRef.current?.(body);
+      // Changes the live document brings in are marked by its sync (as are this
+      // editor's own undos, which are told apart).
+      const sync = transaction.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean, isUndoRedoOperation?: boolean } | undefined;
+      const remote = Boolean(sync?.isChangeOrigin && !sync.isUndoRedoOperation);
+      // Archivium's item editor saves the item from the document's copy of its data,
+      // so that copy has to keep up with the text (as it does in Archivium's editor).
+      const yObjData = live?.ydoc.getMap('obj_data');
+      if (yObjData && !remote && yObjData.size > 0) yObjData.set('body', body);
+      onChangeRef.current?.(body, remote);
     },
   });
 
-  // A live document nobody has opened yet starts from the saved text; this follows
-  // the protocol of Archivium's item editor, so whoever opens it first fills it in.
+  // Whoever opens a live document first fills it in from the saved item, exactly as
+  // Archivium's item editor (editor/src/pages/ItemEdit.tsx) does: its editor reads the
+  // item and its data from the document rather than loading them itself, so they
+  // must be there, not just the text.
   useEffect(() => {
     if (!live || !editor) return;
-    const config = live.ydoc.getMap('config');
-    if (config.get('initialContentLoading') || config.get('initialContentLoaded')) return;
+    const { ydoc, loadItem } = live;
+    const config = ydoc.getMap('config');
+    if (config.get('initialContentLoading')) return;
     config.set('initialContentLoading', true);
-    config.set('initialContentLoaded', true);
-    config.set('itemExistsCache', { [campaign]: Object.fromEntries(Object.keys(items).map(item => [item, true])) });
-    editor.commands.setContent(indexedToJson(value));
+    loadItem().then(item => {
+      if (config.get('initialContentLoaded') || editor.isDestroyed) return;
+      const objData = (typeof item.obj_data === 'string' ? JSON.parse(item.obj_data) : item.obj_data ?? {}) as Record<string, unknown>;
+      ydoc.transact(() => {
+        config.set('itemExistsCache', { [campaign]: Object.fromEntries(Object.keys(items).map(item => [item, true])) });
+        config.set('initialContentLoaded', true);
+        const yItem = ydoc.getMap('item');
+        for (const [key, value] of Object.entries({ ...item, obj_data: objData })) yItem.set(key, value);
+        const yObjData = ydoc.getMap('obj_data');
+        for (const [key, value] of Object.entries(objData)) yObjData.set(key, value);
+      });
+      const body = asBody(objData.body);
+      if (body) editor.commands.setContent(indexedToJson(body));
+    }).catch(() => {
+      // Let someone else fill it in.
+      config.set('initialContentLoading', false);
+    });
   }, [live, editor]);
 
   // Shows changes made elsewhere (e.g. the sheet reloaded after a save).
@@ -122,6 +155,11 @@ function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, r
   }, [value, live, editor]);
 
   useEffect(() => { editor?.setEditable(!readOnly); }, [editor, readOnly]);
+
+  // After the editor's cursor extension has announced its own default.
+  useEffect(() => {
+    if (live?.user && editor) live.provider.setAwarenessField('user', live.user);
+  }, [live, editor]);
 
   return <div className='fate-rich'>
     <style>{RICH_TEXT_CSS}</style>
