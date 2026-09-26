@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadPersonalNote, myNotesUrl, noteUrl, savePersonalNote, type NoteUser, type PersonalNote } from '../fate/notes';
+import { loadPersonalNote, noteUrl, savePersonalNote, type NoteUser, type PersonalNote } from '../fate/notes';
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -78,8 +78,10 @@ export default function PersonalNotes({ campaign, item, itemTitle, user, rows = 
     return () => window.removeEventListener('beforeunload', flush);
   }, []);
 
+  // Known once the note's been made.
+  const uuid = noteRef.current?.uuid ?? note?.uuid;
   const hint = <small style={{ color: 'var(--light-text-color)' }}>
-    Only you can see these. They're also kept in <a className='link link-animated' href={myNotesUrl(noteRef.current?.uuid ?? note?.uuid)}>your notes on Archivium</a>.
+    Only you can see these.{uuid && <> They're kept in your notes on Archivium: <a className='link link-animated' href={noteUrl(uuid)}>open in Archivium's editor</a>.</>}
   </small>;
 
   const statusText = status === 'saving' ? 'Saving...' : status === 'saved' ? 'Saved' : status === 'error' ? 'Failed to save.' : '';

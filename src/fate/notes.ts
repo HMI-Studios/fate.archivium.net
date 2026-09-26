@@ -34,9 +34,8 @@ export type PersonalNote = {
 
 const itemNotesUrl = (campaign: string, item: string) => `${ARCHIVIUM_URL}/api/universes/${campaign}/items/${item}/notes`;
 
-export const noteUrl = (uuid: string) => `${ARCHIVIUM_URL}/notes/${uuid}`;
-// A function, as ARCHIVIUM_URL isn't set yet while this module loads (App imports it).
-export const myNotesUrl = (uuid?: string | null) => `${ARCHIVIUM_URL}/notes${uuid ? `?note=${uuid}` : ''}`;
+// Archivium's note editor, whose back link returns here.
+export const noteUrl = (uuid: string) => `${ARCHIVIUM_URL}/notes/${uuid}?${new URLSearchParams({ returnTo: window.location.href })}`;
 
 export async function loadPersonalNote(campaign: string, item: string, itemTitle: string, user: NoteUser): Promise<PersonalNote> {
   const response = await fetch(itemNotesUrl(campaign, item), { credentials: 'include' });
