@@ -465,6 +465,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const backgroundInput = useRef<HTMLInputElement | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
+  // Where a pan in progress has moved the map to. Re-rendering the whole scene on every
+  // mouse move made panning stutter, so Konva moves the map by itself (as does
+  // backdropRef, the pane behind it), and the camera catches up when the pan ends.
+  const panning = useRef<{ x: number, y: number } | null>(null);
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  // Wheel zooming, gathered up to one zoom a frame (trackpads send many more).
+  const pendingZoom = useRef<{ point: { x: number, y: number }, factor: number } | null>(null);
   const fittedFor = useRef<string | null>(null);
 
   const myLineId = useRef<string | null>(null);
@@ -1516,14 +1523,36 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     e.evt.preventDefault();
     const pointer = e.target.getStage()!.getPointerPosition();
     if (!pointer) return;
-    zoomAt(pointer, Math.exp(-e.evt.deltaY * 0.0015));
+    const factor = Math.exp(-e.evt.deltaY * 0.0015);
+    if (pendingZoom.current) {
+      pendingZoom.current = { point: pointer, factor: pendingZoom.current.factor * factor };
+      return;
+    }
+    pendingZoom.current = { point: pointer, factor };
+    requestAnimationFrame(() => {
+      const zoom = pendingZoom.current;
+      pendingZoom.current = null;
+      if (zoom) zoomAt(zoom.point, zoom.factor);
+    });
   };
 
   // Shape drags bubble up to the stage, so only treat drags of the stage itself as panning.
   const handleStageDrag = (e: Konva.KonvaEventObject<DragEvent>) => {
     const stage = e.target.getStage();
     if (e.target !== stage) return;
-    setCamera(cam => ({ ...cam, x: stage.x(), y: stage.y() }));
+    const at = { x: stage.x(), y: stage.y() };
+    // Text being written is placed by the camera, so it follows along.
+    if (e.type === 'dragend' || textEdit || nameEdit) {
+      panning.current = null;
+      setCamera(cam => ({ ...cam, ...at }));
+      return;
+    }
+    panning.current = at;
+    const pane = backdropRef.current;
+    if (pane) {
+      pane.style.left = `${at.x}px`;
+      pane.style.top = `${at.y}px`;
+    }
   };
 
   const activeTool: Tool = canEdit && !resizingMap && (tool !== 'fog' || (gm && fog.enabled)) ? tool : 'pan';
@@ -1895,10 +1924,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       >
         {/* With a theme backdrop showing around it, the map area is a pane of its own. */}
         {backdrop && <div
+          ref={backdropRef}
           className={theme.glass ? 'glass-pane' : undefined}
           style={{
             position: 'absolute', pointerEvents: 'none', padding: 0, boxSizing: 'border-box',
-            left: camera.x, top: camera.y, width: meta.width * camera.scale, height: meta.height * camera.scale,
+            left: panning.current?.x ?? camera.x, top: panning.current?.y ?? camera.y, width: meta.width * camera.scale, height: meta.height * camera.scale,
             // More solid than Archivium's glass, so drawings and tokens stay easy to see.
             ...(theme.glass ? glass('var(--page-color)', GLASS.map) : { background: 'var(--page-color)' }),
           }}
@@ -1907,8 +1937,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           ref={stageRef}
           width={viewport.width}
           height={viewport.height}
-          x={camera.x}
-          y={camera.y}
+          x={panning.current?.x ?? camera.x}
+          y={panning.current?.y ?? camera.y}
           scaleX={camera.scale}
           scaleY={camera.scale}
           draggable={activeTool === 'pan'}
