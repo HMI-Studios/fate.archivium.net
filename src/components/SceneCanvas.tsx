@@ -1709,6 +1709,105 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     if (marquee) finishMarquee(e.target.getStage()!);
   };
 
+  // One shape on the map, as the Stage below draws it.
+  const renderShape = (s: Shape) => {
+    const selected = selection.includes(s.id);
+    const editable = mayEdit(s);
+    const select = editable ? (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectShape(s.id, e) : undefined;
+    const movable = canMove && editable && !s.locked;
+    const dragProps = {
+      onDragStart: () => handleDragStart(s.id),
+      onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => handleDragMove(s.id, e),
+      onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(s.id, e),
+    };
+    if (s.type === 'rect') {
+      return (
+        <Rect
+          key={s.id}
+          {...s}
+          name='shape'
+          draggable={movable}
+          stroke={selected ? 'red' : undefined}
+          strokeWidth={selected ? 3 : 0}
+          strokeScaleEnabled={false}
+          onClick={select}
+          onTap={select}
+          {...dragProps}
+          onTransformEnd={e => handleTransformEnd(s.id, e)}
+        />
+      );
+    }
+    if (s.type === 'text') {
+      return (
+        <Text
+          key={s.id}
+          id={s.id}
+          name='shape'
+          x={s.x}
+          y={s.y}
+          text={s.text}
+          fontSize={s.fontSize}
+          fill={s.fill}
+          // Hidden while it's being edited in place.
+          visible={textEdit?.id !== s.id}
+          shadowEnabled={selected}
+          shadowColor='red'
+          shadowBlur={6}
+          draggable={movable}
+          onClick={select}
+          onTap={select}
+          onDblClick={() => editText(s)}
+          onDblTap={() => editText(s)}
+          {...dragProps}
+          onTransformEnd={e => handleTransformEnd(s.id, e)}
+        />
+      );
+    }
+    if (s.type === 'token') {
+      return (
+        <Group
+          key={s.id}
+          id={s.id}
+          name='shape'
+          x={s.x}
+          y={s.y}
+          draggable={movable}
+          onClick={select}
+          onTap={select}
+          onDblClick={() => renameToken(s)}
+          onDblTap={() => renameToken(s)}
+          {...dragProps}
+        >
+          {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
+          <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
+          <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} visible={nameEdit?.id !== s.id} />
+          {/* The character's aspects in play, as tags beside the token. */}
+          {tokenTags(s).map((tag, i) => (
+            <Label key={i} x={26} y={-18 + i * 18} listening={false}>
+              <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={0.5} cornerRadius={3} />
+              <Text text={tag.freeInvokes > 0 ? `${tag.name} ${'●'.repeat(tag.freeInvokes)}` : tag.name} fontStyle='italic' fontSize={11} padding={3} fill='#222' />
+            </Label>
+          ))}
+        </Group>
+      );
+    }
+    return (
+      <Line
+        key={s.id}
+        {...s}
+        name='shape line'
+        // Easy to click even when thin, and all the way across when thick.
+        hitStrokeWidth={Math.max(12, s.strokeWidth)}
+        stroke={selected ? 'red' : s.stroke}
+        // Only selected lines move, so a drag across the map pans instead of catching one.
+        draggable={movable && selected}
+        onClick={select}
+        onTap={select}
+        {...dragProps}
+      />
+    );
+  };
+
   const status = doc?.status === 'connecting' ? 'Connecting…'
     : doc?.status === 'offline' ? 'Offline: last saved version, read-only'
     : doc?.status === 'reconnecting' ? 'Reconnecting… changes will sync when it’s back'
@@ -1796,104 +1895,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
               onTransformEnd={handleMapTransformEnd}
             />
             {bgImage && <KonvaImage image={bgImage} {...(meta.imageRect ?? { x: 0, y: 0, width: meta.width, height: meta.height })} listening={false} />}
-            {/* Draw tokens last so drawings can never cover them. */}
-            {[...shapes].filter(s => !hiddenTokenIds.has(s.id)).sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
-              const selected = selection.includes(s.id);
-              const editable = mayEdit(s);
-              const select = editable ? (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectShape(s.id, e) : undefined;
-              const movable = canMove && editable && !s.locked;
-              const dragProps = {
-                onDragStart: () => handleDragStart(s.id),
-                onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => handleDragMove(s.id, e),
-                onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(s.id, e),
-              };
-              if (s.type === 'rect') {
-                return (
-                  <Rect
-                    key={s.id}
-                    {...s}
-                    name='shape'
-                    draggable={movable}
-                    stroke={selected ? 'red' : undefined}
-                    strokeWidth={selected ? 3 : 0}
-                    strokeScaleEnabled={false}
-                    onClick={select}
-                    onTap={select}
-                    {...dragProps}
-                    onTransformEnd={e => handleTransformEnd(s.id, e)}
-                  />
-                );
-              }
-              if (s.type === 'text') {
-                return (
-                  <Text
-                    key={s.id}
-                    id={s.id}
-                    name='shape'
-                    x={s.x}
-                    y={s.y}
-                    text={s.text}
-                    fontSize={s.fontSize}
-                    fill={s.fill}
-                    // Hidden while it's being edited in place.
-                    visible={textEdit?.id !== s.id}
-                    shadowEnabled={selected}
-                    shadowColor='red'
-                    shadowBlur={6}
-                    draggable={movable}
-                    onClick={select}
-                    onTap={select}
-                    onDblClick={() => editText(s)}
-                    onDblTap={() => editText(s)}
-                    {...dragProps}
-                    onTransformEnd={e => handleTransformEnd(s.id, e)}
-                  />
-                );
-              }
-              if (s.type === 'token') {
-                return (
-                  <Group
-                    key={s.id}
-                    id={s.id}
-                    name='shape'
-                    x={s.x}
-                    y={s.y}
-                    draggable={movable}
-                    onClick={select}
-                    onTap={select}
-                    onDblClick={() => renameToken(s)}
-                    onDblTap={() => renameToken(s)}
-                    {...dragProps}
-                  >
-                    {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
-                    <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
-                    <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} visible={nameEdit?.id !== s.id} />
-                    {/* The character's aspects in play, as tags beside the token. */}
-                    {tokenTags(s).map((tag, i) => (
-                      <Label key={i} x={26} y={-18 + i * 18} listening={false}>
-                        <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={0.5} cornerRadius={3} />
-                        <Text text={tag.freeInvokes > 0 ? `${tag.name} ${'●'.repeat(tag.freeInvokes)}` : tag.name} fontStyle='italic' fontSize={11} padding={3} fill='#222' />
-                      </Label>
-                    ))}
-                  </Group>
-                );
-              }
-              return (
-                <Line
-                  key={s.id}
-                  {...s}
-                  name='shape line'
-                  // Easy to click even when thin, and all the way across when thick.
-                  hitStrokeWidth={Math.max(12, s.strokeWidth)}
-                  stroke={selected ? 'red' : s.stroke}
-                  // Only selected lines move, so a drag across the map pans instead of catching one.
-                  draggable={movable && selected}
-                  onClick={select}
-                  onTap={select}
-                  {...dragProps}
-                />
-              );
-            })}
+            {/* Draw tokens last so drawings can never cover them. Players' tokens go
+                over the fog instead (their own character's can be under it). */}
+            {[...shapes].filter(s => !hiddenTokenIds.has(s.id) && !(fogHides && s.type === 'token'))
+              .sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(renderShape)}
             <Transformer
               ref={transformerRef}
               rotateEnabled={false}
@@ -1942,6 +1947,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
               </Group>;
             })}
           </Layer>}
+          {fogHides && <Layer>{tokens.map(renderShape)}</Layer>}
         </Stage>
       </div>
 
