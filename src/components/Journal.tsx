@@ -1,100 +1,81 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import * as Y from 'yjs';
+import { useEffect, useMemo, useState } from 'react';
+import type { Body } from '../fate/body';
+import { ensureJournal, fetchJournal, fetchJournalItem, JOURNAL_ITEM, saveJournal } from '../fate/journal';
 import type { TableDoc } from '../fate/table';
+import { cursorUser, isLive, useSyncedDoc } from '../sync';
+import { debounce } from '../util';
+import RichText from './RichText';
 
-// The campaign journal: one shared text everyone at the table can write in at once,
-// kept in the table doc (fate/table.ts).
-
-// Where a cursor ends up after a remote change, given the change as a Y.Text delta.
-function shiftCursor(pos: number, delta: Y.YTextEvent['delta']): number {
-  // `index` walks the text as it was before the change.
-  let index = 0;
-  let result = pos;
-  for (const op of delta) {
-    if (op.retain) {
-      index += op.retain;
-    } else if (op.insert) {
-      if (index < pos) result += typeof op.insert === 'string' ? op.insert.length : 1;
-    } else if (op.delete) {
-      if (index < pos) result -= Math.min(op.delete, pos - index);
-      index += op.delete;
-    }
-  }
-  return result;
-}
-
-// Applies an edit made in the textarea as the smallest change to the shared text, so
-// it merges with what others are typing.
-function applyEdit(ytext: Y.Text, next: string) {
-  const prev = ytext.toString();
-  let start = 0;
-  while (start < prev.length && start < next.length && prev[start] === next[start]) start++;
-  let prevEnd = prev.length;
-  let nextEnd = next.length;
-  while (prevEnd > start && nextEnd > start && prev[prevEnd - 1] === next[nextEnd - 1]) {
-    prevEnd--;
-    nextEnd--;
-  }
-  ytext.doc!.transact(() => {
-    if (prevEnd > start) ytext.delete(start, prevEnd - start);
-    if (nextEnd > start) ytext.insert(start, next.slice(start, nextEnd));
-  });
-}
+// The campaign journal (fate/journal.ts): rich text everyone at the table can write in
+// at once, in the journal item's live document. Those who can't open that document
+// (spectators, or everyone while the sync server is down) see the last saved journal,
+// reloaded whenever someone saves it.
 
 interface Props {
+  campaign: string;
   table: TableDoc;
+  // The viewer's Archivium username, shown by their cursor.
+  userName?: string;
+  // Roughly how many lines tall the empty journal is.
   rows?: number;
 }
 
-export default function Journal({ table, rows = 16 }: Props) {
-  const ytext = table.journal;
-  const [text, setText] = useState('');
-  const ref = useRef<HTMLTextAreaElement | null>(null);
-  const pendingSelection = useRef<[number, number] | null>(null);
+export default function Journal({ campaign, table, userName, rows = 16 }: Props) {
+  // The saved journal; null if there's none to use.
+  const [saved, setSaved] = useState<Body | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!ytext) return;
-    const update = (event?: Y.YTextEvent) => {
-      const area = ref.current;
-      // Keep our cursor on the same text when someone else types before it.
-      if (event && !event.transaction.local && area && document.activeElement === area) {
-        pendingSelection.current = [shiftCursor(area.selectionStart, event.delta), shiftCursor(area.selectionEnd, event.delta)];
-      }
-      setText(ytext.toString());
-    };
-    ytext.observe(update);
-    update();
-    return () => ytext.unobserve(update);
-  }, [ytext]);
+    setSaved(undefined);
+    ensureJournal(campaign).then(setSaved).catch(() => setSaved(null));
+  }, [campaign]);
 
-  useLayoutEffect(() => {
-    if (!pendingSelection.current || !ref.current) return;
-    ref.current.setSelectionRange(...pendingSelection.current);
-    pendingSelection.current = null;
-  }, [text]);
+  // Someone saved the journal: catch up, for those not following its live document.
+  useEffect(() => {
+    if (table.journalSaved === null || !saved) return;
+    fetchJournal(campaign).then(setSaved).catch(() => {});
+  }, [table.journalSaved]);
 
-  // Until someone who can write has the live journal open, it's empty; show the saved one.
-  const live = ytext && (text.length > 0 || table.canWrite);
-  const value = live ? text : table.savedJournal;
-  const editable = Boolean(ytext) && table.canWrite;
+  const doc = useSyncedDoc(saved ? `item/${campaign}/${JOURNAL_ITEM}` : null);
+  const live = useMemo(() => doc && {
+    ydoc: doc.ydoc,
+    provider: doc.provider,
+    loadItem: () => fetchJournalItem(campaign),
+    ...(userName ? { user: cursorUser(doc.provider, userName) } : {}),
+  }, [doc?.ydoc, userName]);
 
+  // Changes others make are saved by them.
+  const onEdit = (body: Body, remote: boolean) => {
+    if (remote) return;
+    debounce(`journal-save-${campaign}`, () => {
+      saveJournal(campaign, body)
+        .then(() => { setError(null); table.stampJournal(); })
+        .catch(e => setError(e instanceof Error ? e.message : String(e)));
+    }, 800);
+  };
+
+  if (saved === undefined) return <div className='loader' />;
+  if (saved === null) return <small>The journal isn't available in this campaign.</small>;
+
+  const editing = doc && isLive(doc.status) && !doc.readOnly && live;
+  const common = {
+    ariaLabel: 'Journal',
+    campaign,
+    value: saved,
+    article: true,
+    placeholder: editing ? 'Quests, clues, names, loot… anyone at the table can write here.' : 'Nothing in the journal yet.',
+  };
   return (
-    <div className='d-flex flex-col gap-1'>
-      <textarea
-        ref={ref}
-        aria-label='Journal'
-        className='tab-layout-textarea'
-        rows={rows}
-        value={value}
-        readOnly={!editable}
-        placeholder={editable ? 'Quests, clues, names, loot… anyone at the table can write here.' : 'Nothing in the journal yet.'}
-        onChange={({ target }) => ytext && editable && applyEdit(ytext, target.value)}
-        style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
-      />
-      {table.status === 'unavailable' && <small>The journal isn't available in this campaign.</small>}
-      {table.status === 'offline' && <small>Live sync is unavailable, so this is the last saved journal.</small>}
-      {table.status === 'connecting' && <small>Connecting…</small>}
-      {live && !editable && <small>You can read the journal but not write in it.</small>}
+    <div className='d-flex flex-col gap-1 fate-journal'>
+      <style>{`.fate-journal .fate-rich .tiptap { min-height: ${rows * 1.4}rem; }`}</style>
+      {editing
+        ? <RichText key='live' {...common} live={live} onChange={onEdit} />
+        : <RichText key='saved' {...common} readOnly />}
+      {error && <small className='color-error'>{error}</small>}
+      {(!doc || doc.status === 'connecting') && <small>Connecting…</small>}
+      {doc?.status === 'offline' && (table.status === 'offline'
+        ? <small>Live sync is unavailable, so this is the last saved journal.</small>
+        : <small>You can read the journal but not write in it. It updates as others write.</small>)}
     </div>
   );
 }

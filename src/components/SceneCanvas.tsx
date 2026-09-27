@@ -483,7 +483,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const yMeta = ydoc?.getMap<SceneMeta[keyof SceneMeta]>('meta');
   const yAspects = ydoc?.getMap<SceneAspect>('aspects');
   // The dice log is campaign-wide, kept in the table doc rather than the scene's.
-  const table = useTable(campaignShortname, gm);
+  const table = useTable(campaignShortname);
   const yRolls = table.writableRolls;
   // The conflict's turn order, if one is running (key `state`).
   const yCombat = ydoc?.getMap<CombatState>('combat');
@@ -2252,7 +2252,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         canRoll={Boolean(yRolls)}
         onRoll={addRoll}
         onInvoke={invokeOnRoll}
-        journal={<Journal table={table} />}
+        journal={<Journal campaign={campaignShortname} table={table} userName={userName} />}
         onOpenChange={setDiceOpen}
       />
     </FullScreen>

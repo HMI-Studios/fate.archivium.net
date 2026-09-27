@@ -3,17 +3,17 @@ import { useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
 import Journal from '../components/Journal';
-import { TABLE_ITEM, useTable } from '../fate/table';
-import { isGameMaster } from '../perms';
+import { JOURNAL_ITEM } from '../fate/journal';
+import { useTable } from '../fate/table';
 import type { Campaign } from './Campaign';
 
 interface Props {
   user: any;
 }
 
-function CampaignJournal({ campaign, gm }: { campaign: string, gm: boolean }) {
-  const table = useTable(campaign, gm);
-  return <Journal table={table} rows={24} />;
+function CampaignJournal({ campaign, userName }: { campaign: string, userName?: string }) {
+  const table = useTable(campaign);
+  return <Journal campaign={campaign} table={table} userName={userName} rows={24} />;
 }
 
 export default function JournalPage({ user }: Props) {
@@ -36,8 +36,8 @@ export default function JournalPage({ user }: Props) {
     <h1 className='mb-1'>Journal</h1>
     <p className='ma-0 mb-2'>
       Quests, clues and anything else worth remembering; everyone at the table can write here, and it's also
-      in the game room's dice drawer. <a className='link link-animated' href={archiviumItemUrl(campaignShortname, TABLE_ITEM)}>Open in Archivium</a>
+      in the game room's dice drawer. <a className='link link-animated' href={archiviumItemUrl(campaignShortname, JOURNAL_ITEM)}>Open in Archivium</a>
     </p>
-    <CampaignJournal campaign={campaignShortname} gm={isGameMaster(campaign, user)} />
+    <CampaignJournal campaign={campaignShortname} userName={user?.username} />
   </>;
 }
