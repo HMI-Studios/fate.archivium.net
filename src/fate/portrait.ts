@@ -104,17 +104,34 @@ export async function deleteGalleryImage(campaign: string, item: string, imageId
 }
 
 // Loads an image for drawing on a canvas; null until it has loaded (or if it fails).
-export function useCanvasImage(url: string | null): HTMLImageElement | null {
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
+//
+// Images bigger than `maxSize` (on either side) are scaled down once, as they load:
+// canvases draw them on every frame, and Firefox scales the whole image down each time,
+// which made panning a map with a photo on a token stutter.
+export function useCanvasImage(url: string | null, maxSize?: number): HTMLImageElement | HTMLCanvasElement | null {
+  const [image, setImage] = useState<HTMLImageElement | HTMLCanvasElement | null>(null);
   useEffect(() => {
     setImage(null);
     if (!url) return;
     let cancelled = false;
     const img = new Image();
     img.crossOrigin = 'use-credentials';
-    img.onload = () => { if (!cancelled) setImage(img); };
+    img.onload = () => { if (!cancelled) setImage(maxSize ? shrunk(img, maxSize) : img); };
     img.src = url;
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, maxSize]);
   return image;
+}
+
+function shrunk(img: HTMLImageElement, maxSize: number): HTMLImageElement | HTMLCanvasElement {
+  const scale = maxSize / Math.max(img.naturalWidth, img.naturalHeight);
+  if (scale >= 1) return img;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return img;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }

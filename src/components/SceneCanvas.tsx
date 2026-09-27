@@ -337,20 +337,15 @@ function nameWidth(text: string): number {
 
 function Nameplate({ text, visible }: { text: string, visible: boolean }) {
   // (A Konva text's width includes its padding.)
-  const width = nameWidth(text);
-  return <Label x={-(width / 2 + NAMEPLATE_PADDING)} y={TOKEN_RADIUS + 3} visible={visible} listening={false}>
-    <Tag
-      fill='rgba(255, 255, 255, 0.62)'
-      stroke='rgba(255, 255, 255, 0.85)'
-      strokeWidth={0.75}
-      cornerRadius={8}
-      shadowColor='black'
-      shadowOpacity={0.3}
-      shadowBlur={4}
-      shadowOffsetY={1}
-    />
-    <Text text={text} width={width + 2 * NAMEPLATE_PADDING} wrap='none' ellipsis fontSize={NAMEPLATE_FONT_SIZE} padding={NAMEPLATE_PADDING} fill='#1b1b22' />
-  </Label>;
+  const width = nameWidth(text) + 2 * NAMEPLATE_PADDING;
+  const height = NAMEPLATE_FONT_SIZE + 2 * NAMEPLATE_PADDING;
+  // Its shadow is a plate of its own rather than a blurred shadow, which is slow to
+  // draw in Firefox (and is drawn on every frame of a pan).
+  return <Group x={-width / 2} y={TOKEN_RADIUS + 3} visible={visible} listening={false}>
+    <Rect y={1} width={width} height={height} cornerRadius={8} fill='rgba(0, 0, 0, 0.22)' />
+    <Rect width={width} height={height} cornerRadius={8} fill='rgba(255, 255, 255, 0.62)' stroke='rgba(255, 255, 255, 0.85)' strokeWidth={0.75} />
+    <Text text={text} width={width} wrap='none' ellipsis fontSize={NAMEPLATE_FONT_SIZE} padding={NAMEPLATE_PADDING} fill='#1b1b22' />
+  </Group>;
 }
 
 // Archivium can't delete a map's image, so removing the background only hides it:
@@ -363,7 +358,8 @@ const BACKDROP_KEY = 'roomBackdrop';
 // A token's circle: the character's portrait clipped to it, ringed in the token's
 // color, or just the color while there's no portrait (or it hasn't loaded yet).
 function TokenFace({ color, portraitUrl, selected }: { color: string, portraitUrl: string | null, selected: boolean }) {
-  const image = useCanvasImage(portraitUrl);
+  // Big enough to stay sharp fully zoomed in.
+  const image = useCanvasImage(portraitUrl, 512);
   if (!image) {
     return <Circle radius={TOKEN_RADIUS} fill={color} stroke={selected ? 'red' : 'black'} strokeWidth={selected ? 3 : 1} />;
   }
