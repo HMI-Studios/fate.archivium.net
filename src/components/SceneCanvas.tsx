@@ -413,6 +413,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const [liveTokenStates, setLiveTokenStates] = useState<{ [tokenId: string]: TokenState }>({});
   const [savedTokenStates, setSavedTokenStates] = useState<{ [tokenId: string]: TokenState }>({});
   const [savedAspects, setSavedAspects] = useState<SceneAspect[]>([]);
+  // The scene can't be read: hidden in a vault, or not there (Archivium says 403 for both).
+  const [unreadable, setUnreadable] = useState(false);
   const [liveFog, setLiveFog] = useState<Fog>({ enabled: false, strokes: [] });
   const [savedFog, setSavedFog] = useState<Fog>({ enabled: false, strokes: [] });
   // The fog brush: whether it clears the fog or brings it back, and how wide it is.
@@ -507,6 +509,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // live sync is unavailable.
   useEffect(() => {
     fetch(`${ARCHIVIUM_URL}/api/universes/${campaignShortname}/items/${sceneShortname}`, { credentials: 'include' }).then(async (response) => {
+      setUnreadable(response.status === 403 || response.status === 404);
       if (!response.ok) return;
       const data = await response.json();
       const objData = typeof data.obj_data === 'string' ? JSON.parse(data.obj_data) : data.obj_data;
@@ -1859,6 +1862,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   };
 
   const divider = <span aria-hidden style={{ width: 1, alignSelf: 'stretch', background: 'var(--menu-border-color, #6e6e6e)' }} />;
+
+  // Rather than an empty map, with its live doc refused and so seemingly offline.
+  if (unreadable) return <FullScreen>
+    <TopBar left={header} right={headerEnd} />
+    <div className='d-flex justify-center align-center' style={{ position: 'absolute', inset: 0, padding: '1rem', textAlign: 'center' }}>
+      <p className='ma-0' style={{ ...panelStyle, padding: '0.75rem 1rem', maxWidth: '32rem' }}>This scene isn’t there, or is hidden from you: the GMs can keep scenes to themselves while they prepare them.</p>
+    </div>
+  </FullScreen>;
 
   return (
     <FullScreen>
