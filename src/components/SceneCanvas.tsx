@@ -321,6 +321,38 @@ function translateShape(shape: Shape, dx: number, dy: number): Shape {
 
 const TOKEN_RADIUS = 20;
 
+// A token's name sits on a nameplate under it: frosted-glass-ish (a canvas can't blur
+// what's behind it), so it reads on any map, and on the fog. Long names are cut short.
+const NAMEPLATE_FONT_SIZE = 12;
+const NAMEPLATE_PADDING = 3;
+const NAMEPLATE_MAX_TEXT_WIDTH = 110;
+let measuringContext: CanvasRenderingContext2D | null = null;
+function nameWidth(text: string): number {
+  measuringContext ??= document.createElement('canvas').getContext('2d');
+  if (!measuringContext) return NAMEPLATE_MAX_TEXT_WIDTH;
+  // Konva's default font.
+  measuringContext.font = `${NAMEPLATE_FONT_SIZE}px Arial`;
+  return Math.min(NAMEPLATE_MAX_TEXT_WIDTH, Math.ceil(measuringContext.measureText(text).width) + 1);
+}
+
+function Nameplate({ text, visible }: { text: string, visible: boolean }) {
+  // (A Konva text's width includes its padding.)
+  const width = nameWidth(text);
+  return <Label x={-(width / 2 + NAMEPLATE_PADDING)} y={TOKEN_RADIUS + 3} visible={visible} listening={false}>
+    <Tag
+      fill='rgba(255, 255, 255, 0.62)'
+      stroke='rgba(255, 255, 255, 0.85)'
+      strokeWidth={0.75}
+      cornerRadius={8}
+      shadowColor='black'
+      shadowOpacity={0.3}
+      shadowBlur={4}
+      shadowOffsetY={1}
+    />
+    <Text text={text} width={width + 2 * NAMEPLATE_PADDING} wrap='none' ellipsis fontSize={NAMEPLATE_FONT_SIZE} padding={NAMEPLATE_PADDING} fill='#1b1b22' />
+  </Label>;
+}
+
 // Archivium can't delete a map's image, so removing the background only hides it:
 // the scene item remembers this flag until a new image is uploaded.
 const MAP_IMAGE_HIDDEN_KEY = 'mapImageHidden';
@@ -1780,7 +1812,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         >
           {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
           <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
-          <Text text={tokenLabel(s)} y={24} offsetX={30} width={60} align='center' fontSize={12} visible={nameEdit?.id !== s.id} />
+          <Nameplate text={tokenLabel(s)} visible={nameEdit?.id !== s.id} />
           {/* The character's aspects in play, as tags beside the token. */}
           {tokenTags(s).map((tag, i) => (
             <Label key={i} x={26} y={-18 + i * 18} listening={false}>
