@@ -4,12 +4,13 @@ import { Placeholder } from '@tiptap/extensions';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as Y from 'yjs';
 // Archivium's own editor extensions and document format, from the pinned `archivium`
 // dependency. This module is loaded on demand, through RichText.tsx.
 import { editorExtensions, shorthandResolver, type TiptapContext } from 'archivium/src/lib/editor';
 import { indexedToJson, jsonToIndexed } from 'archivium/src/lib/tiptapHelpers';
+import EditorFrame from 'archivium/editor/src/components/EditorFrame';
 import { ARCHIVIUM_URL } from '../App';
 import { asBody, sameBody, type Body } from '../fate/body';
 import { PlainPreview, RICH_TEXT_CSS } from './RichText';
@@ -17,7 +18,8 @@ import { PlainPreview, RICH_TEXT_CSS } from './RichText';
 // A text box for rich text, without a toolbar: formatting comes from the usual
 // shortcuts (Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+Shift+8 for a list...), typing shorthands
 // (**bold**, *italic*, "- " for a list, "> " for a quote...), a small menu over
-// selected text, and "@" to link one of the campaign's items.
+// selected text, and "@" to link one of the campaign's items. Where there's room, it
+// can have Archivium's editor toolbar instead of the menu.
 
 // Short fields leave out what only makes sense in a whole article.
 const ARTICLE_ONLY = new Set(['aside', 'heading', 'image', 'iframe', 'toc']);
@@ -58,6 +60,8 @@ export interface RichTextEditorProps {
   article?: boolean;
   // Edit an Archivium item's live document (as its own editor does) instead of `value`.
   live?: LiveDoc;
+  // Archivium's editor toolbar, for a whole page of text.
+  toolbar?: boolean;
 }
 
 export default function RichTextEditor(props: RichTextEditorProps) {
@@ -73,7 +77,7 @@ export default function RichTextEditor(props: RichTextEditorProps) {
   return <LoadedEditor {...props} items={items} />;
 }
 
-function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, readOnly, article, live, items }: RichTextEditorProps & {
+function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, readOnly, article, live, toolbar, items }: RichTextEditorProps & {
   items: Record<string, { title: string }>,
 }) {
   const onChangeRef = useRef(onChange);
@@ -163,6 +167,14 @@ function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, r
     if (live?.user && editor) live.provider.setAwarenessField('user', live.user);
   }, [live, editor]);
 
+  // For the toolbar's link picker: keyed `universe/item`, grouped by universe.
+  const linkable = useMemo(() => Object.fromEntries(Object.entries(items).map(([item, { title }]) => [`${campaign}/${item}`, title])), [items, campaign]);
+  const groups = useMemo(() => Object.fromEntries(Object.keys(linkable).map(key => [key, campaign])), [linkable, campaign]);
+
+  if (toolbar && editor && !readOnly) return <div className='fate-rich fate-rich-toolbar'>
+    <style>{RICH_TEXT_CSS}</style>
+    <EditorFrame id={id ?? ariaLabel} editor={editor} getLink={async url => [url] as [string]} itemTitles={linkable} itemGroups={groups} />
+  </div>;
   return <div className='fate-rich'>
     <style>{RICH_TEXT_CSS}</style>
     {editor && !readOnly && <SelectionMenu editor={editor} context={context} />}

@@ -37,6 +37,9 @@ export const RICH_TEXT_CSS = `
   height: 0;
   pointer-events: none;
 }
+/* Archivium's toolbar sits on the box's top edge, and sticks to the top of the page. */
+.fate-rich-toolbar .tiptap-navbar { top: 0; z-index: 1; border: 1px solid var(--input-border-color); border-bottom: 0; }
+.fate-rich-toolbar .tiptap { border-radius: 0 0 0.25rem 0.25rem; }
 .fate-rich-menu {
   display: flex;
   gap: 0.125rem;

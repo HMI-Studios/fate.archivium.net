@@ -18,9 +18,11 @@ interface Props {
   userName?: string;
   // Roughly how many lines tall the empty journal is.
   rows?: number;
+  // Archivium's editor toolbar, for when the journal has the page to itself.
+  toolbar?: boolean;
 }
 
-export default function Journal({ campaign, table, userName, rows = 16 }: Props) {
+export default function Journal({ campaign, table, userName, rows = 16, toolbar }: Props) {
   // The saved journal; null if there's none to use.
   const [saved, setSaved] = useState<Body | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export default function Journal({ campaign, table, userName, rows = 16 }: Props)
     <div className='d-flex flex-col gap-1 fate-journal'>
       <style>{`.fate-journal .fate-rich .tiptap { min-height: ${rows * 1.4}rem; }`}</style>
       {editing
-        ? <RichText key='live' {...common} live={live} onChange={onEdit} />
+        ? <RichText key='live' {...common} live={live} onChange={onEdit} toolbar={toolbar} />
         : <RichText key='saved' {...common} readOnly />}
       {error && <small className='color-error'>{error}</small>}
       {(!doc || doc.status === 'connecting') && <small>Connecting…</small>}

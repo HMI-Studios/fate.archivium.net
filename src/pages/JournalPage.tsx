@@ -13,7 +13,7 @@ interface Props {
 
 function CampaignJournal({ campaign, userName }: { campaign: string, userName?: string }) {
   const table = useTable(campaign);
-  return <Journal campaign={campaign} table={table} userName={userName} rows={24} />;
+  return <Journal campaign={campaign} table={table} userName={userName} rows={24} toolbar />;
 }
 
 export default function JournalPage({ user }: Props) {
