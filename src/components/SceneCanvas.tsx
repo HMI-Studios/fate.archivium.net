@@ -92,7 +92,8 @@ type Point = { x: number, y: number };
 const shapePosition = (shape: Shape): Point => ({ x: shape.x ?? 0, y: shape.y ?? 0 });
 
 // Tools for the map. Pan also moves things; Select drags out a box to select what it touches.
-type Tool = 'pan' | 'select' | 'draw' | 'erase' | 'text';
+// (The fog brush is the GM's, so it's not among TOOLS: see the Fog menu.)
+type Tool = 'pan' | 'select' | 'draw' | 'erase' | 'text' | 'fog';
 
 const TOOLS: { tool: Tool, label: string, hint: string }[] = [
   { tool: 'pan', label: 'Pan', hint: 'Drag to move around the map, and to move tokens and shapes. Shift- or Ctrl-click to select several.' },
@@ -102,7 +103,7 @@ const TOOLS: { tool: Tool, label: string, hint: string }[] = [
   { tool: 'text', label: 'Text', hint: 'Click the map to write on it, or click text to edit it (double-click text to edit it with any tool)' },
 ];
 
-const TOOL_CURSORS: { [tool in Tool]: string } = { pan: 'grab', select: 'default', draw: 'crosshair', erase: 'cell', text: 'text' };
+const TOOL_CURSORS: { [tool in Tool]: string } = { pan: 'grab', select: 'default', draw: 'crosshair', erase: 'cell', text: 'text', fog: 'crosshair' };
 
 // Line thicknesses, in map units.
 const LINE_WIDTHS: { width: number, label: string }[] = [
@@ -184,16 +185,66 @@ function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
-// Whether any part of a drawn line comes within `reach` of a point (map coordinates).
-function lineNear(line: LineShape, p: Point, reach: number): boolean {
-  const { x, y } = shapePosition(line);
-  const at = (i: number) => ({ x: x + line.points[i], y: y + line.points[i + 1] });
-  const within = reach + line.strokeWidth / 2;
-  if (line.points.length < 4) return line.points.length === 2 && Math.hypot(p.x - at(0).x, p.y - at(0).y) <= within;
-  for (let i = 0; i + 3 < line.points.length; i += 2) {
+// Whether a line through `points` (drawn from x, y) comes within `within` of a point.
+function polylineNear(points: number[], x: number, y: number, p: Point, within: number): boolean {
+  const at = (i: number) => ({ x: x + points[i], y: y + points[i + 1] });
+  if (points.length < 4) return points.length === 2 && Math.hypot(p.x - at(0).x, p.y - at(0).y) <= within;
+  for (let i = 0; i + 3 < points.length; i += 2) {
     if (distanceToSegment(p, at(i), at(i + 2)) <= within) return true;
   }
   return false;
+}
+
+// Whether any part of a drawn line comes within `reach` of a point (map coordinates).
+function lineNear(line: LineShape, p: Point, reach: number): boolean {
+  const { x, y } = shapePosition(line);
+  return polylineNear(line.points, x, y, p, reach + line.strokeWidth / 2);
+}
+
+// Fog of war: while it's on, the map is covered for players, and the GM paints parts
+// of it clear (or covered again) with a brush. Strokes apply in the order they were
+// made, each a line `width` map units wide. The fog is only drawn over the map: the
+// scene's live doc still holds everything under it, and tokens hidden by it are only
+// left off players' screens.
+export type FogStroke = { id: string, at: number, mode: 'reveal' | 'cover', points: number[], width: number };
+type Fog = { enabled: boolean, strokes: FogStroke[] };
+
+// Where the scene item keeps its fog (Fog).
+const FOG_KEY = 'fog';
+const FOG_COLOR = '#15151c';
+// Brush widths, in screen pixels at the zoom a stroke starts at.
+const FOG_BRUSHES: { size: number, label: string }[] = [
+  { size: 40, label: 'Small brush' },
+  { size: 100, label: 'Medium brush' },
+  { size: 250, label: 'Large brush' },
+];
+
+const byStrokeOrder = (a: FogStroke, b: FogStroke) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+// Whether a point is under the fog, given the strokes in order: covered to begin with,
+// and then as the last stroke over it left it.
+function isFogged(strokes: FogStroke[], p: Point): boolean {
+  let covered = true;
+  for (const stroke of strokes) {
+    if (polylineNear(stroke.points, 0, 0, p, stroke.width / 2)) covered = stroke.mode === 'cover';
+  }
+  return covered;
+}
+
+// A stroke stretched or moved along with the map, as shapes are (see scaleShape).
+const scaleStroke = (stroke: FogStroke, sx: number, sy: number): FogStroke => ({
+  ...stroke,
+  points: stroke.points.map((p, i) => p * (i % 2 === 0 ? sx : sy)),
+  width: stroke.width * Math.sqrt(sx * sy),
+});
+const translateStroke = (stroke: FogStroke, dx: number, dy: number): FogStroke => ({
+  ...stroke,
+  points: stroke.points.map((p, i) => p + (i % 2 === 0 ? dx : dy)),
+});
+
+function asFog(value: unknown): Fog {
+  const fog = value && typeof value === 'object' ? value as Partial<Fog> : {};
+  return { enabled: Boolean(fog.enabled), strokes: Array.isArray(fog.strokes) ? fog.strokes : [] };
 }
 
 type MapItem = {
@@ -330,6 +381,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const [liveTokenStates, setLiveTokenStates] = useState<{ [tokenId: string]: TokenState }>({});
   const [savedTokenStates, setSavedTokenStates] = useState<{ [tokenId: string]: TokenState }>({});
   const [savedAspects, setSavedAspects] = useState<SceneAspect[]>([]);
+  const [liveFog, setLiveFog] = useState<Fog>({ enabled: false, strokes: [] });
+  const [savedFog, setSavedFog] = useState<Fog>({ enabled: false, strokes: [] });
+  // The fog brush: whether it clears the fog or brings it back, and how wide it is.
+  const [fogMode, setFogMode] = useState<FogStroke['mode']>('reveal');
+  const [fogBrush, setFogBrush] = useState(FOG_BRUSHES[1].size);
   // Sheet data of the characters in the scene, for their temporary aspects, skills and fate points.
   const [sheets, setSheets] = useState<{ [shortname: string]: Record<string, unknown> }>({});
   // Who has claimed each character on the board, by shortname (see fate/vaults.ts).
@@ -378,6 +434,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const fittedFor = useRef<string | null>(null);
 
   const myLineId = useRef<string | null>(null);
+  const myFogStrokeId = useRef<string | null>(null);
+  // The GM sees through the fog. Konva's opacity applies to each shape on a layer,
+  // so overlapping strokes would show and reveals only half clear it: the layer is
+  // drawn solid, and its canvas faded instead.
+  const fogLayer = (layer: Konva.Layer | null) => {
+    if (layer) layer.getNativeCanvasElement().style.opacity = gm ? '0.45' : '1';
+  };
   const seeded = useRef(false);
 
   const ydoc = doc?.ydoc;
@@ -392,6 +455,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const yCombat = ydoc?.getMap<CombatState>('combat');
   // Monster tokens' own copies of their changing stats (see fate/tokenState.ts).
   const yTokenStates = ydoc?.getMap<TokenState>(TOKEN_STATES_KEY);
+  // Whether the fog is on (key `enabled`), and its strokes by id.
+  const yFog = ydoc?.getMap<boolean>(FOG_KEY);
+  const yFogStrokes = ydoc?.getMap<FogStroke>('fogStrokes');
 
   useEffect(() => {
     fetchSettings(campaignShortname).then(settings => setTurnOrder(settings.turnOrder)).catch(() => {});
@@ -429,17 +495,19 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       setSavedAspects(sceneSheetAspects !== undefined ? fromSceneSheet(sceneSheetAspects) : (objData?.sceneAspects ?? []));
       setSavedCombat(objData?.combat ?? null);
       setSavedTokenStates(objData?.[TOKEN_STATES_KEY] ?? {});
+      setSavedFog(asFog(objData?.[FOG_KEY]));
       setSavedShapes(objData?.mapData ?? []);
     });
   }, [campaignShortname, sceneShortname]);
 
   useEffect(() => {
-    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates) return;
+    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || !yFog || !yFogStrokes) return;
 
     const updateShapes = () => setLiveShapes(Array.from(yShapes.values()));
     const updateAspects = () => setLiveAspects(Array.from(yAspects.values()));
     const updateCombat = () => setLiveCombat(yCombat.get('state') ?? null);
     const updateTokenStates = () => setLiveTokenStates(Object.fromEntries(yTokenStates.entries()));
+    const updateFog = () => setLiveFog({ enabled: Boolean(yFog.get('enabled')), strokes: Array.from(yFogStrokes.values()) });
     const updateMeta = () => {
       if (!yMeta.has('width')) return;
       setMeta(m => ({
@@ -456,11 +524,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     yAspects.observe(updateAspects);
     yCombat.observe(updateCombat);
     yTokenStates.observe(updateTokenStates);
+    yFog.observe(updateFog);
+    yFogStrokes.observe(updateFog);
     updateShapes();
     updateMeta();
     updateAspects();
     updateCombat();
     updateTokenStates();
+    updateFog();
 
     // Persist our own edits; updates that arrive from the server were saved by
     // whoever made them. The data endpoint merges into obj_data, so this leaves
@@ -474,6 +545,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           mapData: Array.from(yShapes.values()),
           combat: yCombat.get('state') ?? null,
           [TOKEN_STATES_KEY]: Object.fromEntries(yTokenStates.entries()),
+          ...(yFog.has('enabled') ? { [FOG_KEY]: { enabled: Boolean(yFog.get('enabled')), strokes: Array.from(yFogStrokes.values()) } satisfies Fog } : {}),
           ...(yMeta.has('width') ? {
             [MAP_AREA_KEY]: { width: yMeta.get('width'), height: yMeta.get('height'), imageRect: yMeta.get('imageRect') ?? null },
           } : {}),
@@ -509,6 +581,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       yAspects.unobserve(updateAspects);
       yCombat.unobserve(updateCombat);
       yTokenStates.unobserve(updateTokenStates);
+      yFog.unobserve(updateFog);
+      yFogStrokes.unobserve(updateFog);
       ydoc.off('update', onUpdate);
     };
   }, [ydoc]);
@@ -517,13 +591,17 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // server last started. Shapes are keyed by id, so two clients seeding at once
   // converge instead of duplicating.
   useEffect(() => {
-    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || savedShapes === null || seeded.current) return;
+    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || !yFog || !yFogStrokes || savedShapes === null || seeded.current) return;
     seeded.current = true;
     ydoc.transact(() => {
       if (yShapes.size === 0) savedShapes.forEach(shape => yShapes.set(shape.id, shape));
       if (yAspects.size === 0) savedAspects.forEach(aspect => yAspects.set(aspect.id, aspect));
       if (!yCombat.has('state') && savedCombat) yCombat.set('state', savedCombat);
       if (yTokenStates.size === 0) Object.entries(savedTokenStates).forEach(([id, state]) => yTokenStates.set(id, state));
+      if (!yFog.has('enabled')) {
+        yFog.set('enabled', savedFog.enabled);
+        if (yFogStrokes.size === 0) savedFog.strokes.forEach(stroke => yFogStrokes.set(stroke.id, stroke));
+      }
       if (!yMeta.has('width')) {
         yMeta.set('width', meta.width);
         yMeta.set('height', meta.height);
@@ -588,14 +666,23 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const aspects = showLive ? liveAspects : savedAspects;
   const combat = showLive ? liveCombat : savedCombat;
   const tokenStates = showLive ? liveTokenStates : savedTokenStates;
+  const fog = showLive ? liveFog : savedFog;
+  const fogStrokes = [...fog.strokes].sort(byStrokeOrder);
 
-  const tokens = shapes.filter((shape): shape is TokenShape => shape.type === 'token');
+  const allTokens = shapes.filter((shape): shape is TokenShape => shape.type === 'token');
+  // Players don't see tokens under the fog (bar their own character's) anywhere: not
+  // on the map, and not in the turn order, aspects or dice roller either.
+  const fogHides = fog.enabled && !gm;
+  const tokens = fogHides
+    ? allTokens.filter(t => (userId !== undefined && claimedBy[t.itemShortname] === userId) || !isFogged(fogStrokes, t))
+    : allTokens;
+  const hiddenTokenIds = new Set(allTokens.filter(t => !tokens.includes(t)).map(t => t.id));
   const isMonster = (token: TokenShape) => (token.itemType ?? tokenCandidates.find(c => c.shortname === token.itemShortname)?.item_type) === MONSTER_TYPE;
   // A token's own name if it's been given one; otherwise several tokens of one character
   // are numbered, e.g. "Goblin 2" (counting named ones, so naming one renumbers no others).
   const tokenLabel = (token: TokenShape) => {
     if (token.nickname) return token.nickname;
-    const same = tokens.filter(t => t.itemShortname === token.itemShortname);
+    const same = allTokens.filter(t => t.itemShortname === token.itemShortname);
     return same.length > 1 ? `${token.itemTitle} ${same.indexOf(token) + 1}` : token.itemTitle;
   };
 
@@ -610,7 +697,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       characters.push({ key: token.itemShortname, shortname: token.itemShortname, title: named?.nickname ?? token.itemTitle });
     }
   }
-  const sheetShortnames = [...new Set(tokens.map(t => t.itemShortname))].sort().join(',');
+  // (All of them, fogged or not: who has claimed each tells which are the viewer's.)
+  const sheetShortnames = [...new Set(allTokens.map(t => t.itemShortname))].sort().join(',');
+  // The scene's aspects players can see: not those on characters hidden by the fog.
+  const hiddenActors = new Set(allTokens.filter(t => hiddenTokenIds.has(t.id)).map(t => isMonster(t) ? tokenActorKey(t.id) : t.itemShortname)
+    .filter(key => !characters.some(c => c.key === key)));
+  const shownAspects = hiddenActors.size ? aspects.filter(a => !a.target || !hiddenActors.has(a.target)) : aspects;
 
   // The sheet a token plays from: a monster token's own copy of its changing stats over
   // the monster's sheet, otherwise the character's shared sheet.
@@ -878,7 +970,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     ...Object.entries(sheetAspects).filter(([shortname]) => characters.some(c => c.key === shortname)).flatMap(([shortname, list]) => list
       .map((entry, i) => ({ id: sheetAspectId(shortname, i), name: entry.name ?? '', freeInvokes: sheetInvokes(entry), ownerTitle: titleOf(shortname) }))
       .filter(a => a.name)),
-    ...aspects.map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.target ? a.targetTitle ?? titleOf(a.target) : SCENE_OWNER })),
+    ...shownAspects.map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.target ? a.targetTitle ?? titleOf(a.target) : SCENE_OWNER })),
   ];
 
   const addRoll = (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => {
@@ -1224,6 +1316,44 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     myLineId.current = null;
   };
 
+  const startFogStroke = (stage: Konva.Stage) => {
+    if (!canEdit || !gm || !ydoc || !yFogStrokes) return;
+    const pos = stage.getRelativePointerPosition();
+    if (!pos) return;
+    const at = Date.now();
+    const stroke: FogStroke = { id: `fog-${at}-${ydoc.clientID}`, at, mode: fogMode, points: [pos.x, pos.y], width: fogBrush / camera.scale };
+    myFogStrokeId.current = stroke.id;
+    yFogStrokes.set(stroke.id, stroke);
+  };
+
+  const paintFog = (stage: Konva.Stage) => {
+    const id = myFogStrokeId.current;
+    const current = id ? yFogStrokes?.get(id) : undefined;
+    const point = stage.getRelativePointerPosition();
+    if (!yFogStrokes || !current || !point) return;
+    // Points closer together than this add nothing to so wide a stroke.
+    const last = { x: current.points[current.points.length - 2], y: current.points[current.points.length - 1] };
+    if (Math.hypot(point.x - last.x, point.y - last.y) < current.width / 8) return;
+    yFogStrokes.set(current.id, { ...current, points: current.points.concat([point.x, point.y]) });
+  };
+
+  const setFogEnabled = (enabled: boolean) => {
+    if (!canEdit || !gm || !yFog) return;
+    yFog.set('enabled', enabled);
+    if (enabled) {
+      setTool('fog');
+      setFogMode('reveal');
+    } else if (tool === 'fog') {
+      setTool('pan');
+    }
+  };
+
+  const coverEverything = () => {
+    if (!canEdit || !gm || !ydoc || !yFogStrokes) return;
+    if (!window.confirm('Cover the whole map with fog again? Everything revealed so far will be hidden from the players.')) return;
+    ydoc.transact(() => Array.from(yFogStrokes.keys()).forEach(id => yFogStrokes.delete(id)));
+  };
+
   const uploadImage = async (file: File) => {
     if (!canEdit || !ydoc || !yShapes || !yMeta) return;
     setUploading(true);
@@ -1250,6 +1380,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         const sx = newWidth / meta.width;
         const sy = newHeight / meta.height;
         Array.from(yShapes.values()).forEach(shape => yShapes.set(shape.id, scaleShape(shape, sx, sy)));
+        Array.from(yFogStrokes?.values() ?? []).forEach(stroke => yFogStrokes!.set(stroke.id, scaleStroke(stroke, sx, sy)));
       }
       yMeta.set('width', newWidth);
       yMeta.set('height', newHeight);
@@ -1288,7 +1419,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const image = meta.imageRect ?? { x: 0, y: 0, width: meta.width, height: meta.height };
     fittedFor.current = `${width}x${height}`;
     ydoc.transact(() => {
-      if (dx || dy) Array.from(yShapes.values()).forEach(shape => yShapes.set(shape.id, translateShape(shape, dx, dy)));
+      if (dx || dy) {
+        Array.from(yShapes.values()).forEach(shape => yShapes.set(shape.id, translateShape(shape, dx, dy)));
+        Array.from(yFogStrokes?.values() ?? []).forEach(stroke => yFogStrokes!.set(stroke.id, translateStroke(stroke, dx, dy)));
+      }
       yMeta.set('width', width);
       yMeta.set('height', height);
       yMeta.set('imageRect', { ...image, x: image.x + dx, y: image.y + dy });
@@ -1357,7 +1491,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     setCamera(cam => ({ ...cam, x: stage.x(), y: stage.y() }));
   };
 
-  const activeTool: Tool = canEdit && !resizingMap ? tool : 'pan';
+  const activeTool: Tool = canEdit && !resizingMap && (tool !== 'fog' || (gm && fog.enabled)) ? tool : 'pan';
   // Selected shapes that still exist (someone else may have deleted one).
   const selection = selectedIds.filter(id => shapes.some(shape => shape.id === id));
   const canMove = canEdit && (activeTool === 'pan' || activeTool === 'select');
@@ -1524,6 +1658,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const stage = e.target.getStage()!;
     const onEmpty = e.target === stage;
     const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+    if (activeTool === 'fog') {
+      startFogStroke(stage);
+      return;
+    }
     if (activeTool === 'text') {
       // The click keeps focus where it is, so the text being written doesn't save on blur.
       if (textEdit) commitText(textEdit);
@@ -1556,6 +1694,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const pointerMove = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const stage = e.target.getStage()!;
     draw(e);
+    if (myFogStrokeId.current) paintFog(stage);
     if (eraserAt.current) eraseAlong(stage);
     if (marquee) {
       const at = stage.getRelativePointerPosition();
@@ -1565,6 +1704,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   const pointerUp = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     endDraw();
+    myFogStrokeId.current = null;
     eraserAt.current = null;
     if (marquee) finishMarquee(e.target.getStage()!);
   };
@@ -1657,7 +1797,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             />
             {bgImage && <KonvaImage image={bgImage} {...(meta.imageRect ?? { x: 0, y: 0, width: meta.width, height: meta.height })} listening={false} />}
             {/* Draw tokens last so drawings can never cover them. */}
-            {[...shapes].sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
+            {[...shapes].filter(s => !hiddenTokenIds.has(s.id)).sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(s => {
               const selected = selection.includes(s.id);
               const editable = mayEdit(s);
               const select = editable ? (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectShape(s.id, e) : undefined;
@@ -1789,6 +1929,19 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
               listening={false}
             />}
           </Layer>
+          {/* Over everything, as the players see it; the GM sees through it. On a
+              layer of its own, so revealing only cuts through the fog. */}
+          {fog.enabled && <Layer ref={fogLayer} listening={false}>
+            <Rect x={0} y={0} width={meta.width} height={meta.height} fill={FOG_COLOR} />
+            {fogStrokes.map(stroke => {
+              const composite = stroke.mode === 'reveal' ? 'destination-out' : 'source-over';
+              return <Group key={stroke.id}>
+                {/* A click without a drag still makes a round spot. */}
+                <Circle x={stroke.points[0]} y={stroke.points[1]} radius={stroke.width / 2} fill={FOG_COLOR} globalCompositeOperation={composite} />
+                {stroke.points.length >= 4 && <Line points={stroke.points} stroke={FOG_COLOR} strokeWidth={stroke.width} lineCap='round' lineJoin='round' globalCompositeOperation={composite} />}
+              </Group>;
+            })}
+          </Layer>}
         </Stage>
       </div>
 
@@ -1983,6 +2136,28 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
                 />
               </div>}
             </MenuButton>
+            <MenuButton label='Fog' placement='above' title='Fog of war: hide the map from the players, and reveal it bit by bit' width='min(20rem, calc(100vw - 1rem))'>
+              {close => <div className='d-flex flex-col gap-1'>
+                <button onClick={() => { close(); setFogEnabled(!fog.enabled); }}>{fog.enabled ? 'Turn fog of war off' : 'Turn fog of war on'}</button>
+                {fog.enabled && <button onClick={() => { close(); coverEverything(); }}>Cover the whole map again</button>}
+                <small style={{ opacity: 0.8 }}>
+                  {fog.enabled
+                    ? 'Players only see what you’ve painted clear with the fog brush, and none of the characters under the fog. Turning it off shows them everything, but keeps what you’ve revealed for next time.'
+                    : 'Covers the map for the players; then paint parts of it clear with the fog brush. You still see everything, through the fog.'}
+                </small>
+                <small style={{ opacity: 0.8 }}>It only hides things from view: someone who digs into the page’s data could still find what’s under it.</small>
+              </div>}
+            </MenuButton>
+            {fog.enabled && <button onClick={() => setTool('fog')} disabled={tool === 'fog'} title='Paint the fog away, or back'>Fog brush</button>}
+            {activeTool === 'fog' && <>
+              <select aria-label='Fog brush mode' value={fogMode} onChange={({ target }) => setFogMode(target.value as FogStroke['mode'])}>
+                <option value='reveal'>Reveal</option>
+                <option value='cover'>Cover</option>
+              </select>
+              <select aria-label='Fog brush size' value={fogBrush} onChange={({ target }) => setFogBrush(Number(target.value))}>
+                {FOG_BRUSHES.map(b => <option key={b.size} value={b.size}>{b.label}</option>)}
+              </select>
+            </>}
             {/* Outside the menu, so it's still there when a file is picked. */}
             <input
               ref={backgroundInput}
@@ -2003,7 +2178,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       <SideDrawer title='Aspects' side='left' storageKey='fate.aspectsDrawerOpen' defaultOpen={window.innerWidth >= 900} onOpenChange={setAspectsOpen}>
         <AspectsPanel
           campaignShortname={campaignShortname}
-          aspects={aspects}
+          aspects={shownAspects}
           characters={characters}
           sheetAspects={sheetAspects}
           consequences={consequenceAspects}
