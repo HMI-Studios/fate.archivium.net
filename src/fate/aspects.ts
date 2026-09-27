@@ -19,7 +19,14 @@ export type SceneAspect = {
   targetTitle?: string;
   // Free text from the scene sheet, kept as-is.
   note?: string;
+  // Where the GM has pinned a scene aspect on the map, as a label, in map coordinates.
+  pin?: AspectPin;
 };
+
+export type AspectPin = { x: number, y: number };
+
+const isPin = (pin: unknown): pin is AspectPin => Boolean(pin && typeof pin === 'object'
+  && Number.isFinite((pin as AspectPin).x) && Number.isFinite((pin as AspectPin).y));
 
 // A temporary aspect as stored on a character sheet (Fate Core layout path
 // `temporaryAspects`). Sheet list fields are text, so invokes are a numeric string.
@@ -82,6 +89,7 @@ export type SceneSheetAspect = SheetAspect & {
   kind?: string;
   target?: string | null;
   targetTitle?: string;
+  pin?: AspectPin;
 };
 
 export const SCENE_ASPECTS_KEY = 'aspects';
@@ -103,6 +111,7 @@ export function fromSceneSheet(entries: unknown): SceneAspect[] {
       target: entry.target || null,
       ...(entry.targetTitle ? { targetTitle: entry.targetTitle } : {}),
       ...(entry.note ? { note: entry.note } : {}),
+      ...(isPin(entry.pin) ? { pin: { x: entry.pin.x, y: entry.pin.y } } : {}),
     }));
 }
 
@@ -113,6 +122,7 @@ export function toSceneSheet(aspects: SceneAspect[]): SceneSheetAspect[] {
     kind: aspect.kind,
     target: aspect.target,
     ...(aspect.targetTitle ? { targetTitle: aspect.targetTitle } : {}),
+    ...(aspect.pin ? { pin: aspect.pin } : {}),
   }));
 }
 

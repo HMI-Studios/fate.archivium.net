@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Tag, Text, Transformer } from 'react-konva';
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
-import { ASPECT_INVOKES_KEY, aspectInvokes, CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, mainAspectId, mainAspects, parseConsequenceId, parseMainAspectId, parseSheetAspectId, withAspectInvokes, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type SceneAspect, type SheetAspect } from '../fate/aspects';
+import { ASPECT_INVOKES_KEY, aspectInvokes, CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, mainAspectId, mainAspects, parseConsequenceId, parseMainAspectId, parseSheetAspectId, withAspectInvokes, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type AspectPin, type SceneAspect, type SheetAspect } from '../fate/aspects';
 import { initiativeOrder, modeOf, moveInOrder, passTurn, setCurrent, startNextRound, stepTurn, undoPass, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
 import { fetchSettings, type TurnOrderMode } from '../fate/settings';
 import { useTable } from '../fate/table';
@@ -346,6 +346,39 @@ function Nameplate({ text, visible }: { text: string, visible: boolean }) {
     <Rect width={width} height={height} cornerRadius={8} fill='rgba(255, 255, 255, 0.62)' stroke='rgba(255, 255, 255, 0.85)' strokeWidth={0.75} />
     <Text text={text} width={width} wrap='none' ellipsis fontSize={NAMEPLATE_FONT_SIZE} padding={NAMEPLATE_PADDING} fill='#1b1b22' />
   </Group>;
+}
+
+// A scene aspect the GM has pinned to the map: a label like the aspect tags beside
+// tokens, but bigger, centred on its pin.
+const PIN_FONT_SIZE = 15;
+const PIN_PADDING = 5;
+let pinMeasuringContext: CanvasRenderingContext2D | null = null;
+function pinTextWidth(text: string): number {
+  pinMeasuringContext ??= document.createElement('canvas').getContext('2d');
+  if (!pinMeasuringContext) return text.length * PIN_FONT_SIZE * 0.5;
+  pinMeasuringContext.font = `italic ${PIN_FONT_SIZE}px Arial`;
+  return Math.ceil(pinMeasuringContext.measureText(text).width) + 1;
+}
+
+function AspectPinLabel({ aspect, movable, onMoved }: { aspect: SceneAspect, movable: boolean, onMoved: (x: number, y: number) => void }) {
+  const text = aspect.freeInvokes > 0 ? `${aspect.name} ${'●'.repeat(aspect.freeInvokes)}` : aspect.name;
+  const width = pinTextWidth(text) + 2 * PIN_PADDING;
+  const height = PIN_FONT_SIZE + 2 * PIN_PADDING;
+  return <Label
+    x={aspect.pin!.x}
+    y={aspect.pin!.y}
+    offsetX={width / 2}
+    offsetY={height / 2}
+    draggable={movable}
+    listening={movable}
+    onDragEnd={e => onMoved(e.target.x(), e.target.y())}
+    // Dragging it isn't panning the map.
+    onMouseDown={e => { e.cancelBubble = true; }}
+    onTouchStart={e => { e.cancelBubble = true; }}
+  >
+    <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={1} cornerRadius={4} />
+    <Text text={text} fontStyle='italic' fontSize={PIN_FONT_SIZE} padding={PIN_PADDING} fill='#222' />
+  </Label>;
 }
 
 // Archivium can't delete a map's image, so removing the background only hides it:
@@ -1070,6 +1103,27 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   const writableAspects = (): Y.Map<SceneAspect> | null => (canEdit && yAspects) ? yAspects : null;
 
+  // Pins go where the GM is looking, to be dragged into place from there.
+  const pinAspect = (id: string, pinned: boolean) => {
+    const target = gm ? writableAspects() : null;
+    const aspect = target?.get(id);
+    if (!target || !aspect) return;
+    const { pin: _, ...unpinned } = aspect;
+    const { x, y } = viewCenter();
+    target.set(id, pinned ? { ...aspect, pin: { x: Math.round(x), y: Math.round(y) } } : unpinned);
+  };
+  const movePin = (id: string, x: number, y: number) => {
+    const target = gm ? writableAspects() : null;
+    const aspect = target?.get(id);
+    if (target && aspect?.pin) target.set(id, { ...aspect, pin: { x: Math.round(x), y: Math.round(y) } });
+  };
+  // Pins move along with the map when it's rescaled or its area moves, as shapes do.
+  const movePins = (move: (pin: AspectPin) => AspectPin) => {
+    Array.from(yAspects?.values() ?? []).forEach(aspect => {
+      if (aspect.pin) yAspects!.set(aspect.id, { ...aspect, pin: move(aspect.pin) });
+    });
+  };
+
   const addAspect = (aspect: Omit<SceneAspect, 'id'>) => {
     // Temporary character aspects go straight onto the sheet so they outlast the scene;
     // a monster token's stay in the scene with it.
@@ -1419,6 +1473,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         const sy = newHeight / meta.height;
         Array.from(yShapes.values()).forEach(shape => yShapes.set(shape.id, scaleShape(shape, sx, sy)));
         Array.from(yFogStrokes?.values() ?? []).forEach(stroke => yFogStrokes!.set(stroke.id, scaleStroke(stroke, sx, sy)));
+        movePins(pin => ({ x: pin.x * sx, y: pin.y * sy }));
       }
       yMeta.set('width', newWidth);
       yMeta.set('height', newHeight);
@@ -1460,6 +1515,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       if (dx || dy) {
         Array.from(yShapes.values()).forEach(shape => yShapes.set(shape.id, translateShape(shape, dx, dy)));
         Array.from(yFogStrokes?.values() ?? []).forEach(stroke => yFogStrokes!.set(stroke.id, translateStroke(stroke, dx, dy)));
+        movePins(pin => ({ x: pin.x + dx, y: pin.y + dy }));
       }
       yMeta.set('width', width);
       yMeta.set('height', height);
@@ -1966,8 +2022,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             {bgImage && <KonvaImage image={bgImage} {...(meta.imageRect ?? { x: 0, y: 0, width: meta.width, height: meta.height })} listening={false} />}
             {/* Draw tokens last so drawings can never cover them. Players' tokens go
                 over the fog instead (their own character's can be under it). */}
-            {[...shapes].filter(s => !hiddenTokenIds.has(s.id) && !(fogHides && s.type === 'token'))
-              .sort((a, b) => Number(a.type === 'token') - Number(b.type === 'token')).map(renderShape)}
+            {shapes.filter(s => s.type !== 'token').map(renderShape)}
+            {/* Pinned scene aspects, over the drawings but under the tokens (and the fog). */}
+            {shownAspects.filter(a => !a.target && a.pin).map(a => (
+              <AspectPinLabel key={a.id} aspect={a} movable={gm && canEdit && activeTool === 'pan'} onMoved={(x, y) => movePin(a.id, x, y)} />
+            ))}
+            {!fogHides && shapes.filter(s => s.type === 'token' && !hiddenTokenIds.has(s.id)).map(renderShape)}
             <Transformer
               ref={transformerRef}
               rotateEnabled={false}
@@ -2260,6 +2320,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           characterAspects={characterAspects}
           canEdit={canEdit}
           gm={gm}
+          onPin={gm && canEdit ? pinAspect : undefined}
           onAdd={addAspect}
           onUpdate={updateAspect}
           onRemove={removeAspect}

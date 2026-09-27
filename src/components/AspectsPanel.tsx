@@ -124,10 +124,12 @@ interface Props {
   onUpdate: (id: string, changes: Partial<SceneAspect>) => void;
   onRemove: (id: string) => void;
   onKeepOnSheet: (aspect: SceneAspect) => void;
+  // Pins a scene aspect to the map as a label, or takes it off; only for the GM.
+  onPin?: (id: string, pinned: boolean) => void;
   onEndScene: () => void;
 }
 
-function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKeepOnSheet }: {
+function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKeepOnSheet, onPin }: {
   aspect: SceneAspect,
   // Stored on the character's sheet rather than in the scene.
   onSheet?: boolean,
@@ -135,6 +137,7 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   onUpdate: Props['onUpdate'],
   onRemove: Props['onRemove'],
   onKeepOnSheet: Props['onKeepOnSheet'],
+  onPin?: Props['onPin'],
 }) {
   const kind = aspectKind(aspect.kind);
   // Consequences are named and cleared on the sheet (or a monster's combat card).
@@ -192,6 +195,13 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
         {canEdit && aspect.kind !== 'boost' && (
           <button title={fromSheet ? 'Add a free invoke (from creating an advantage on it)' : 'Add a free invoke'} onClick={() => onUpdate(aspect.id, { freeInvokes: aspect.freeInvokes + 1 })}>+ invoke</button>
         )}
+        {onPin && !onSheet && !aspect.target && (
+          <button
+            title={aspect.pin ? 'Take its label off the map' : 'Put it on the map as a label, where everyone can see it (drag it into place)'}
+            aria-pressed={Boolean(aspect.pin)}
+            onClick={() => onPin(aspect.id, !aspect.pin)}
+          >{aspect.pin ? 'Unpin' : 'Pin to map'}</button>
+        )}
         {canEdit && !onSheet && aspect.kind === 'temporary' && aspect.target && !tokenIdOfActor(aspect.target) && (
           <button title="Move it onto the character's sheet so it outlasts the scene" onClick={() => onKeepOnSheet(aspect)}>Keep on sheet</button>
         )}
@@ -200,7 +210,7 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
   );
 }
 
-export default function AspectsPanel({ campaignShortname, aspects, characters, sheetAspects, consequences, characterAspects, canEdit, gm, onAdd, onUpdate, onRemove, onKeepOnSheet, onEndScene }: Props) {
+export default function AspectsPanel({ campaignShortname, aspects, characters, sheetAspects, consequences, characterAspects, canEdit, gm, onAdd, onUpdate, onRemove, onKeepOnSheet, onPin, onEndScene }: Props) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<AspectKind>('situation');
   const [target, setTarget] = useState('');
@@ -247,7 +257,7 @@ export default function AspectsPanel({ campaignShortname, aspects, characters, s
             {sceneAspects.length === 0 && <small>No situation aspects yet.</small>}
             {view.editing
               ? <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
-                {sceneAspects.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} />)}
+                {sceneAspects.map(aspect => <AspectRow key={aspect.id} aspect={aspect} {...rowProps} onPin={onPin} />)}
               </ul>
               : <CompactAspects aspects={sceneAspects} />}
           </>}
