@@ -16,7 +16,7 @@ import {
   type StuntEntry,
   type StuntSummary,
 } from '../fate/stunts';
-import { isLive, useSyncedDoc } from '../sync';
+import { cursorUser, isLive, useSyncedDoc } from '../sync';
 import { debounce } from '../util';
 
 // How many matching stunts the picker lists at once.
@@ -143,10 +143,8 @@ function StuntPicker({ id, label, value, linked, catalog, exclude, disabled, onT
   </div>;
 }
 
-// Who's editing, as Archivium's editor shows it (by the cursor, and in its list of
-// who's there): its DocUser in editor/src/hooks/useProvider.ts.
+// Who's editing (see cursorUser).
 export type EditingUser = { username: string };
-const CURSOR_COLORS = ['#3CB371', '#DC143C', '#C71585', '#FF7F50', '#4682B4', '#808000'];
 
 type TextProps = {
   editor: EditingUser,
@@ -167,13 +165,7 @@ function LiveStuntText({ editor, id, label, campaign, stunt, onEdit }: TextProps
     ydoc: doc.ydoc,
     provider: doc.provider,
     loadItem: () => fetchStuntItem(campaign, stunt.shortname),
-    user: {
-      clientId: doc.provider.awareness?.clientID,
-      name: editor.username,
-      color: CURSOR_COLORS[[...editor.username].reduce((sum, c) => sum + c.charCodeAt(0), 0) % CURSOR_COLORS.length],
-      // Relative, as it's shown in Archivium's pages.
-      pfp: `/api/users/${editor.username}/pfp`,
-    },
+    user: cursorUser(doc.provider, editor.username),
   }, [doc?.ydoc, editor.username]);
   const common = { id, ariaLabel: label, placeholder: 'What the stunt does', campaign, value: stunt.body, article: true };
   if (!doc || doc.status === 'connecting') return <RichText key='connecting' {...common} readOnly />;

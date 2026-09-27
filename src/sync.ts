@@ -34,6 +34,20 @@ export type SyncedDoc = {
 
 const CONNECT_TIMEOUT = 8000;
 
+const CURSOR_COLORS = ['#3CB371', '#DC143C', '#C71585', '#FF7F50', '#4682B4', '#808000'];
+
+// Who's editing a live item document, as Archivium's editor shows them (by their cursor,
+// and in its list of who's there): its DocUser in editor/src/hooks/useProvider.ts.
+export function cursorUser(provider: HocuspocusProvider, username: string): Record<string, unknown> {
+  return {
+    clientId: provider.awareness?.clientID,
+    name: username,
+    color: CURSOR_COLORS[[...username].reduce((sum, c) => sum + c.charCodeAt(0), 0) % CURSOR_COLORS.length],
+    // Relative, as it's shown in Archivium's pages.
+    pfp: `/api/users/${username}/pfp`,
+  };
+}
+
 export function useSyncedDoc(name: string | null): SyncedDoc | null {
   const [conn, setConn] = useState<{ ydoc: Y.Doc, provider: HocuspocusProvider } | null>(null);
   const [status, setStatus] = useState<SyncStatus>('connecting');
