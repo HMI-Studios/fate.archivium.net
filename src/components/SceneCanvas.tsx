@@ -499,6 +499,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // backdropRef, the pane behind it), and the camera catches up when the pan ends.
   const panning = useRef<{ x: number, y: number } | null>(null);
   const backdropRef = useRef<HTMLDivElement | null>(null);
+  // A two-finger pinch in progress: where the fingers were last, on screen.
+  const lastPinch = useRef<{ center: Point, distance: number } | null>(null);
   // Wheel zooming, gathered up to one zoom a frame (trackpads send many more).
   const pendingZoom = useRef<{ point: { x: number, y: number }, factor: number } | null>(null);
   const fittedFor = useRef<string | null>(null);
@@ -1807,8 +1809,60 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     startDraw(e);
   };
 
+  // Pinching zooms around the fingers, and moves the map along with them. It's followed
+  // on the canvas itself (see below): Konva sends no touch events while the first
+  // finger is panning.
+  const pinch = (stage: Konva.Stage, touches: TouchList) => {
+    // Whatever the first finger started (a pan, a line...) gives way to the pinch.
+    if (stage.isDragging()) stage.stopDrag();
+    endDraw();
+    myFogStrokeId.current = null;
+    eraserAt.current = null;
+    if (marquee) setMarquee(null);
+    const box = stage.container().getBoundingClientRect();
+    const [a, b] = [touches[0], touches[1]];
+    const center = { x: (a.clientX + b.clientX) / 2 - box.left, y: (a.clientY + b.clientY) / 2 - box.top };
+    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const last = lastPinch.current;
+    lastPinch.current = { center, distance };
+    if (!last || !last.distance) return;
+    setCamera(cam => {
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, cam.scale * distance / last.distance));
+      const worldX = (last.center.x - cam.x) / cam.scale;
+      const worldY = (last.center.y - cam.y) / cam.scale;
+      return { scale, x: center.x - worldX * scale, y: center.y - worldY * scale };
+    });
+  };
+
+  const pinchRef = useRef(pinch);
+  pinchRef.current = pinch;
+  useEffect(() => {
+    const stage = stageRef.current;
+    const content = stage?.content;
+    if (!stage || !content) return;
+    const onTouch = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        pinchRef.current(stage, e.touches);
+      } else if (e.type === 'touchend' && e.touches.length === 0) {
+        lastPinch.current = null;
+      }
+    };
+    const options = { capture: true, passive: false };
+    content.addEventListener('touchstart', onTouch, options);
+    content.addEventListener('touchmove', onTouch, options);
+    content.addEventListener('touchend', onTouch, options);
+    return () => {
+      content.removeEventListener('touchstart', onTouch, options);
+      content.removeEventListener('touchmove', onTouch, options);
+      content.removeEventListener('touchend', onTouch, options);
+    };
+  }, [stageRef.current]);
+
   const pointerMove = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const stage = e.target.getStage()!;
+    // Nothing else happens during a pinch, or with the finger left after it.
+    if (lastPinch.current) return;
     draw(e);
     if (myFogStrokeId.current) paintFog(stage);
     if (eraserAt.current) eraseAlong(stage);
@@ -1819,6 +1873,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   };
 
   const pointerUp = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (lastPinch.current) return;
     endDraw();
     myFogStrokeId.current = null;
     eraserAt.current = null;
@@ -1932,11 +1987,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // Floating panels sit between the drawers, clear of their tabs.
   const [aspectsOpen, setAspectsOpen] = useState(false);
   const [diceOpen, setDiceOpen] = useState(false);
-  // When the drawers leave too little room between them, the panels span the window
-  // over them instead.
+  // When the drawers leave too little room between them (as on a phone, where one
+  // fills the screen), the panels span the window instead, under the drawers: over
+  // them, they covered the drawers' own buttons.
   const drawerPx = Math.min(22 * 16, 0.92 * viewport.width);
   const crowded = viewport.width - drawerPx * (Number(aspectsOpen) + Number(diceOpen)) < 480;
-  const between = crowded ? { left: '0.5rem', right: '0.5rem', zIndex: 21 } : {
+  const between = crowded ? { left: '0.5rem', right: '0.5rem', zIndex: 15 } : {
     left: aspectsOpen ? `calc(${DRAWER_WIDTH} + 2.5rem)` : '3rem',
     right: diceOpen ? `calc(${DRAWER_WIDTH} + 2.5rem)` : '3rem',
     zIndex: 15,
