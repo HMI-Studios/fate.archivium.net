@@ -4,6 +4,14 @@
         <title>Archivium Fate</title>
         <meta charset="utf-8">
         <meta name="viewport" content="initial-scale=1, width=device-width" />
+        <script>
+            // iOS zooms in on a text field as it's focused, if its text is under 16px, and
+            // leaves it zoomed. This stops that; iOS still lets people pinch to zoom. (Not
+            // elsewhere: Android doesn't zoom on focus, and would stop pinch zooming.)
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+                document.querySelector('meta[name=viewport]').content += ', maximum-scale=1';
+            }
+        </script>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Open+Sans&family=Raleway&family=Roboto&display=swap" rel="stylesheet">
