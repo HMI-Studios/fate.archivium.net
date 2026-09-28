@@ -143,7 +143,9 @@ function LoadedEditor({ id, ariaLabel, placeholder, campaign, value, onChange, r
         for (const [key, value] of Object.entries(objData)) yObjData.set(key, value);
       });
       const body = asBody(objData.body);
-      if (body) editor.commands.setContent(indexedToJson(body));
+      // Not an edit: it's what's saved already. (Reported as one, it was saved again,
+      // along with whatever keeps a copy of it, on every first visit.)
+      if (body) editor.commands.setContent(indexedToJson(body), { emitUpdate: false });
     }).catch(() => {
       // Let someone else fill it in.
       config.set('initialContentLoading', false);
