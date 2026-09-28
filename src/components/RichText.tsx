@@ -30,6 +30,9 @@ export const RICH_TEXT_CSS = `
 .fate-rich .tiptap p { margin: 0; }
 .fate-rich .tiptap ul, .fate-rich .tiptap ol { margin: 0.25rem 0; padding-left: 1.5rem; }
 .fate-rich .tiptap blockquote { margin: 0.25rem 0; padding-left: 0.75rem; border-left: 3px solid var(--input-border-color); }
+/* Archivium's styles hide an empty last paragraph, which in an empty editor is the only
+   one, and took the placeholder with it. */
+.fate-rich .tiptap > p.is-editor-empty:only-child { display: block; }
 .fate-rich .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--light-text-color);
