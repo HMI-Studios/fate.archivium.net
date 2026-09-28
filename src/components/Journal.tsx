@@ -65,7 +65,7 @@ export default function Journal({ campaign, table, userName, rows = 16, toolbar 
     campaign,
     value: saved,
     article: true,
-    placeholder: editing ? 'Quests, clues, names, loot… anyone at the table can write here.' : 'Nothing in the journal yet.',
+    placeholder: 'Nothing in the journal yet.',
   };
   return (
     <div className='d-flex flex-col gap-1 fate-journal'>
