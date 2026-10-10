@@ -14,7 +14,14 @@ export const TOKEN_STATES_KEY = 'tokenStates';
 // The sheet keys a monster token keeps its own copy of.
 export const TOKEN_STATE_KEYS = ['stress', 'consequences', 'consequenceInvokes', 'aspectInvokes', 'fatePoints'] as const;
 
-export type TokenState = Partial<Record<typeof TOKEN_STATE_KEYS[number], unknown>>;
+export type TokenState = Partial<Record<typeof TOKEN_STATE_KEYS[number], unknown>> & {
+  // Taken out of the conflict (by a hit on its mob, or one it couldn't absorb). It stays
+  // on the map, crossed out, until the GM deletes it or puts it back in the fight.
+  takenOut?: boolean,
+};
+
+// A mob (see fate/mobs.ts) keeps its own aspects' free invokes and fate points here
+// too, under the mob's id; its members' stress and consequences are their own.
 
 // Who can be targeted and roll in a scene. PCs and NPCs are keyed by item shortname;
 // monster tokens by token id, since each one is separate.

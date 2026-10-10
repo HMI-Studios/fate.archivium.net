@@ -11,6 +11,9 @@ export type SceneCharacter = {
   shortname: string;
   title: string;
   scoped?: boolean;
+  // A mob (see fate/mobs.ts): how many members it has besides the one rolling, for
+  // its teamwork bonus.
+  helpers?: number;
 };
 
 const KIND_COLORS: { [kind in AspectKind]: string } = {

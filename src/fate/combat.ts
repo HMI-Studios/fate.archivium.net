@@ -107,3 +107,46 @@ export function undoPass(state: CombatState): CombatState {
 export function setCurrent(state: CombatState, tokenId: string): CombatState {
   return { ...state, current: tokenId, acted: (state.acted ?? []).filter(id => id !== tokenId) };
 }
+
+/* Mobs (see fate/mobs.ts): a mob is one combatant, under its own id */
+
+// Some combatants become others (members forming a mob, or a mob breaking up): they
+// take the turn order place of the first of the old ones in it (or of one staying on,
+// like a mob others join), and its turn if it was one of theirs; in popcorn they've
+// acted if any of the old ones had. Combatants not in the conflict stay out of it.
+export function replaceInOrder(state: CombatState, oldIds: string[], newIds: string[]): CombatState {
+  const old = new Set(oldIds);
+  const staying = state.order.findIndex(id => old.has(id) && newIds.includes(id));
+  const at = staying >= 0 ? staying : state.order.findIndex(id => old.has(id));
+  if (at < 0) return state;
+  const fresh = [...new Set(newIds)];
+  const kept = (ids: string[]) => ids.filter(id => !old.has(id) && !fresh.includes(id));
+  const order = [...kept(state.order.slice(0, at)), ...fresh, ...kept(state.order.slice(at))];
+  const acted = state.acted && (state.acted.some(id => old.has(id)) ? [...kept(state.acted), ...fresh] : kept(state.acted));
+  const current = state.current && old.has(state.current) ? fresh[0] ?? null : state.current;
+  return { ...state, order, current, ...(acted ? { acted } : {}) };
+}
+
+// A combatant joins the conflict right after another (e.g. leaving its mob), acting
+// when it does; if that one isn't in the conflict, neither is the newcomer.
+export function insertAfter(state: CombatState, afterId: string, id: string): CombatState {
+  const at = state.order.indexOf(afterId);
+  if (at < 0 || state.order.includes(id)) return state;
+  const order = [...state.order.slice(0, at + 1), id, ...state.order.slice(at + 1)];
+  const acted = state.acted?.includes(afterId) ? [...state.acted, id] : state.acted;
+  return { ...state, order, ...(acted ? { acted } : {}) };
+}
+
+// A combatant leaves the conflict (e.g. taken out, or fled). In initiative, if it was
+// their turn, the next one's starts; in popcorn, someone still waiting acts next.
+export function withoutCombatant(state: CombatState, present: Set<string>, id: string): CombatState {
+  if (!state.order.includes(id) && state.current !== id) return state;
+  if (modeOf(state) === 'popcorn') {
+    const next = state.current === id ? waitingToAct(state, present)[0] ?? null : state.current;
+    const order = state.order.filter(other => other !== id);
+    return { ...state, order, acted: (state.acted ?? []).filter(other => other !== id), current: next ?? order[0] ?? null };
+  }
+  const passed = state.current === id ? stepTurn(state, present, 1) : state;
+  const order = passed.order.filter(other => other !== id);
+  return { ...passed, order, current: passed.current === id ? order[0] ?? null : passed.current };
+}

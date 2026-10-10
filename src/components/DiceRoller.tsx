@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { diceTotal, FATE_SKILLS, isBonus, ladderLabel, paidInvokeUsed, rollTotal, signed, type FateDie, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
+import { teamworkBonus } from '../fate/mobs';
 import type { SceneCharacter } from './AspectsPanel';
 import SideDrawer from './SideDrawer';
 
@@ -24,7 +25,7 @@ interface Props {
   fatePoints: { [key: string]: number };
   aspects: InvokableAspect[];
   canRoll: boolean;
-  onRoll: (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => void;
+  onRoll: (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier' | 'teamwork'>) => void;
   onInvoke: (rollId: string, aspectId: string, effect: InvokeEffect) => void;
   // Shown on the drawer's Journal tab.
   journal: ReactNode;
@@ -77,6 +78,7 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
   const parts = [
     `dice ${signed(diceTotal(roll.dice))}`,
     roll.skill ? `${roll.skill} ${signed(roll.skillRating)}` : null,
+    roll.teamwork ? `teamwork ${signed(roll.teamwork)}` : null,
     roll.modifier ? `modifier ${signed(roll.modifier)}` : null,
     ...roll.invokes.map(invokeText),
   ].filter(Boolean);
@@ -165,12 +167,16 @@ export default function DiceRoller({ rolls, characters, own, skills, fatePoints,
   const ratings = chosen ? skills[chosen.key] ?? {} : {};
   // Rated skills first, best first; everything else is Mediocre (+0).
   const skillOptions = [...FATE_SKILLS].sort((a, b) => (ratings[b] ?? 0) - (ratings[a] ?? 0));
+  // A mob rolls once for everyone in it, with their help.
+  const helpers = chosen?.helpers ?? 0;
+  const teamwork = skill ? teamworkBonus(helpers, ratings[skill] ?? 0) : 0;
 
   const roll = () => onRoll({
     ...(chosen ? { character: { shortname: chosen.shortname, title: chosen.title, key: chosen.key } } : {}),
     ...(skill ? { skill } : {}),
     skillRating: skill ? ratings[skill] ?? 0 : 0,
     modifier,
+    ...(teamwork ? { teamwork } : {}),
   });
 
   return (
@@ -205,6 +211,13 @@ export default function DiceRoller({ rolls, characters, own, skills, fatePoints,
               </label>
               <button type='submit' className='grow-1'>Roll 4dF</button>
             </div>
+            {helpers > 0 && <small style={{ opacity: 0.8 }}>
+              {!skill
+                ? `Pick a skill: ${helpers === 1 ? "the mob's other member helps" : `the mob's other ${helpers} members help`} if they have it at Average (+1) or better.`
+                : teamwork
+                  ? `Teamwork ${signed(teamwork)}: ${helpers === 1 ? "the mob's other member helps" : `the mob's other ${helpers} members help`}.`
+                  : `No teamwork bonus: the mob's members need ${skill} at Average (+1) or better to help.`}
+            </small>}
           </form>
         )}
         {rolls.length === 0 && <small>No rolls yet.</small>}

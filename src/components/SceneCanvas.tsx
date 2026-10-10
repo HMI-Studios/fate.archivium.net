@@ -4,7 +4,8 @@ import { Circle, Group, Image as KonvaImage, Label, Layer, Line, Rect, Stage, Ta
 import * as Y from 'yjs';
 import { ARCHIVIUM_URL } from '../App';
 import { ASPECT_INVOKES_KEY, aspectInvokes, CONSEQUENCE_INVOKES_KEY, consequenceId, consequenceInvokes, fromSceneSheet, mainAspectId, mainAspects, parseConsequenceId, parseMainAspectId, parseSheetAspectId, withAspectInvokes, withConsequenceInvokes, SCENE_ASPECTS_KEY, sheetAspectId, sheetInvokes, TEMPORARY_ASPECTS_KEY, toSceneSheet, toSheetAspect, type AspectPin, type SceneAspect, type SheetAspect } from '../fate/aspects';
-import { initiativeOrder, modeOf, moveInOrder, passTurn, setCurrent, startNextRound, stepTurn, undoPass, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
+import { initiativeOrder, insertAfter, moveInOrder, passTurn, replaceInOrder, setCurrent, startNextRound, stepTurn, undoPass, withoutCombatant, type CombatState, type ConflictKind } from '../fate/combat';
+import { isMobId, MOB_COLORS, newMobId, type MobHitStep } from '../fate/mobs';
 import { fetchSettings, type TurnOrderMode } from '../fate/settings';
 import { useTable } from '../fate/table';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
@@ -74,6 +75,8 @@ export type TokenShape = BaseShape & {
   color: string;
   // A name for this token on the map, instead of the character's.
   nickname?: string;
+  // The mob it's in, if any (see fate/mobs.ts).
+  mob?: string;
 };
 
 export type TextShape = BaseShape & {
@@ -758,11 +761,47 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const same = allTokens.filter(t => t.itemShortname === token.itemShortname);
     return same.length > 1 ? `${token.itemTitle} ${same.indexOf(token) + 1}` : token.itemTitle;
   };
+  const isTakenOut = (token: TokenShape) => Boolean(tokenStates[token.id]?.takenOut);
 
-  // Who's in the scene: one entry per PC or NPC, and one per monster token.
+  // Mobs (see fate/mobs.ts), by id: their members still in the fight, in name order.
+  // A mob down to one member is about to break up (see settling below), and that
+  // member is on their own meanwhile.
+  const mobs: { [mobId: string]: TokenShape[] } = {};
+  for (const token of allTokens) {
+    if (token.mob && !isTakenOut(token)) (mobs[token.mob] ??= []).push(token);
+  }
+  for (const [mobId, members] of Object.entries(mobs)) {
+    if (members.length < 2) delete mobs[mobId];
+    else members.sort((a, b) => tokenLabel(a).localeCompare(tokenLabel(b), undefined, { numeric: true }));
+  }
+  const mobIds = Object.keys(mobs);
+  const mobOf = (token: TokenShape) => token.mob && mobs[token.mob]?.includes(token) ? token.mob : null;
+  // Who takes a turn for a token: its mob, or itself.
+  const combatantOf = (token: TokenShape) => mobOf(token) ?? token.id;
+  // "Goblin mob", numbered when there's more than one of the same monster.
+  const mobLabel = (mobId: string) => {
+    const [first] = mobs[mobId];
+    const same = mobIds.filter(id => mobs[id][0].itemShortname === first.itemShortname);
+    return same.length > 1 ? `${first.itemTitle} mob ${same.indexOf(mobId) + 1}` : `${first.itemTitle} mob`;
+  };
+  const mobColor = (mobId: string) => MOB_COLORS[mobIds.indexOf(mobId) % MOB_COLORS.length];
+  // Whose aspects a token's are: its mob's, a monster token's own, or its character's.
+  const actorKeyOf = (token: TokenShape) => {
+    const mob = mobOf(token);
+    return mob ? tokenActorKey(mob) : isMonster(token) ? tokenActorKey(token.id) : token.itemShortname;
+  };
+
+  // Who's in the scene: one entry per PC or NPC, one per mob, and one per monster token
+  // that's on its own and still in the fight.
   const characters: SceneCharacter[] = [];
   for (const token of tokens) {
-    if (isMonster(token)) {
+    const mob = mobOf(token);
+    if (mob) {
+      if (!characters.some(c => c.key === tokenActorKey(mob))) {
+        characters.push({ key: tokenActorKey(mob), shortname: token.itemShortname, title: mobLabel(mob), scoped: true, helpers: mobs[mob].length - 1 });
+      }
+    } else if (isMonster(token)) {
+      if (isTakenOut(token)) continue;
       characters.push({ key: tokenActorKey(token.id), shortname: token.itemShortname, title: tokenLabel(token), scoped: true });
     } else if (!characters.some(c => c.key === token.itemShortname)) {
       // Called by the name on one of their tokens, if one has one.
@@ -773,7 +812,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // (All of them, fogged or not: who has claimed each tells which are the viewer's.)
   const sheetShortnames = [...new Set(allTokens.map(t => t.itemShortname))].sort().join(',');
   // The scene's aspects players can see: not those on characters hidden by the fog.
-  const hiddenActors = new Set(allTokens.filter(t => hiddenTokenIds.has(t.id)).map(t => isMonster(t) ? tokenActorKey(t.id) : t.itemShortname)
+  const hiddenActors = new Set(allTokens.filter(t => hiddenTokenIds.has(t.id)).map(actorKeyOf)
     .filter(key => !characters.some(c => c.key === key)));
   const shownAspects = hiddenActors.size ? aspects.filter(a => !a.target || !hiddenActors.has(a.target)) : aspects;
 
@@ -785,6 +824,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const actorSheet = (key: string): Record<string, unknown> | undefined => {
     const tokenId = tokenIdOfActor(key);
     if (!tokenId) return sheets[key];
+    // A mob's own fate points and free invokes, over its monster's sheet.
+    if (mobs[tokenId]) return tokenSheet(sheets[mobs[tokenId][0].itemShortname], tokenStates[tokenId]);
     const token = tokens.find(t => t.id === tokenId);
     return token ? tokenView(token) : undefined;
   };
@@ -799,10 +840,32 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     return id === null ? null : galleryImageUrl(campaignShortname, shortname, id);
   };
 
-  // Every token is a combatant.
-  const combatEntries: CombatEntry[] = tokens.map(token => {
+  // Every token still in the fight is a combatant, but a mob's members are one.
+  const combatEntries: CombatEntry[] = [];
+  for (const token of tokens) {
+    if (isTakenOut(token)) continue;
+    const mob = mobOf(token);
+    if (mob) {
+      if (combatEntries.some(e => e.tokenId === mob)) continue;
+      combatEntries.push({
+        tokenId: mob,
+        label: mobLabel(mob),
+        color: mobColor(mob),
+        portraitUrl: portraitUrl(token.itemShortname),
+        stress: [],
+        consequences: [],
+        slots: [],
+        members: mobs[mob].filter(t => tokens.includes(t)).map(member => ({
+          tokenId: member.id,
+          label: tokenLabel(member),
+          stress: stressTracks(tokenView(member)),
+          consequences: takenConsequences(tokenView(member)),
+        })),
+      });
+      continue;
+    }
     const view = tokenView(token);
-    return {
+    combatEntries.push({
       tokenId: token.id,
       label: tokenLabel(token),
       color: token.color,
@@ -810,9 +873,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       stress: stressTracks(view),
       consequences: takenConsequences(view),
       slots: consequenceSlots(view),
-      ...(isMonster(token) ? { consequenceSlots: consequenceSlots(view) } : {}),
-    };
-  });
+      ...(isMonster(token) ? {
+        consequenceSlots: consequenceSlots(view),
+        // A monster on its own (like the last of a mob) can join a mob of its kind.
+        mobs: mobIds.filter(id => mobs[id][0].itemShortname === token.itemShortname).map(id => ({ id, label: mobLabel(id) })),
+      } : {}),
+    });
+  }
+  const shortnameOf = (combatantId: string) => mobs[combatantId]?.[0].itemShortname ?? allTokens.find(t => t.id === combatantId)?.itemShortname ?? '';
 
   // Ticking a stress box on a card: a monster token changes its own copy; anyone else
   // saves to the freshest copy of their sheet, which all their tokens share.
@@ -843,9 +911,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const token = tokens.find(t => t.id === tokenId);
     if (!canEdit || !token) return;
     if (isMonster(token)) {
-      setTokenState(token.id, state => {
-        const { sheet, keys } = withHit(tokenView(token), hit);
-        return { ...state, ...Object.fromEntries(keys.map(key => [key, getPath(sheet, key)])) };
+      ydoc?.transact(() => {
+        setTokenState(token.id, state => {
+          const { sheet, keys } = withHit(tokenView(token), hit);
+          return { ...state, ...Object.fromEntries(keys.map(key => [key, getPath(sheet, key)])) };
+        });
+        if (hit.takenOut) takeOut([token]);
       });
       return;
     }
@@ -880,44 +951,175 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   const startCombat = (kind: ConflictKind) => {
     // In popcorn, initiative only suggests who goes first; the GM can pick someone else.
-    const order = initiativeOrder(tokens.map(t => ({ tokenId: t.id, shortname: t.itemShortname })), kind, shortname => skillRatings(sheets[shortname]));
+    const order = initiativeOrder(combatEntries.map(e => ({ tokenId: e.tokenId, shortname: shortnameOf(e.tokenId) })), kind, shortname => skillRatings(sheets[shortname]));
     setCombat({ kind, mode: turnOrder, round: 1, order, current: order[0] ?? null, ...(turnOrder === 'popcorn' ? { acted: [] } : {}) });
   };
 
-  const presentTokens = () => new Set(tokens.map(t => t.id));
+  const presentTokens = () => new Set(combatEntries.map(e => e.tokenId));
 
+  // Removing whoever's turn it is passes the turn on (in popcorn, to someone still waiting).
   const removeCombatant = (tokenId: string) => {
-    if (!combat) return;
-    if (modeOf(combat) === 'popcorn') {
-      // Removing whoever's acting hands the turn to someone still waiting, if anyone is.
-      const next = combat.current === tokenId ? waitingToAct(combat, presentTokens())[0] ?? null : combat.current;
-      const order = combat.order.filter(id => id !== tokenId);
-      setCombat({ ...combat, order, acted: (combat.acted ?? []).filter(id => id !== tokenId), current: next ?? order[0] ?? null });
-      return;
-    }
-    // Removing whoever's turn it is passes the turn on first.
-    const passed = combat.current === tokenId ? stepTurn(combat, presentTokens(), 1) : combat;
-    const order = passed.order.filter(id => id !== tokenId);
-    setCombat({ ...passed, order, current: passed.current === tokenId ? order[0] ?? null : passed.current });
+    if (combat) setCombat(withoutCombatant(combat, presentTokens(), tokenId));
   };
+
+  /* Mobs (see fate/mobs.ts) */
+
+  // The GM puts tokens into a mob: the first of them already in one, or a new one.
+  // They take its turn, and bring their aspects along; a whole mob joining another
+  // brings its own aspects too.
+  const joinMob = (members: TokenShape[], into?: string) => {
+    const target = writableShapes();
+    if (!gm || !target || !ydoc || !yTokenStates) return;
+    const mobId = into ?? members.map(mobOf).find(Boolean) ?? newMobId();
+    const joining = members.filter(t => mobOf(t) !== mobId);
+    const oldActors = new Set(joining.map(actorKeyOf));
+    // Mobs that come over whole.
+    const emptied = [...new Set(joining.map(mobOf).filter((id): id is string => Boolean(id)))]
+      .filter(id => mobs[id].every(t => joining.includes(t)));
+    const movesOver = (actorKey: string) => {
+      const id = tokenIdOfActor(actorKey);
+      return oldActors.has(actorKey) && (!isMobId(id) || emptied.includes(id!));
+    };
+    ydoc.transact(() => {
+      for (const token of joining) {
+        const current = target.get(token.id);
+        if (current?.type === 'token') target.set(token.id, { ...current, mob: mobId });
+      }
+      const title = mobs[mobId] ? mobLabel(mobId) : `${members[0].itemTitle} mob`;
+      aspects.filter(a => a.target && movesOver(a.target))
+        .forEach(a => yAspects?.set(a.id, { ...a, target: tokenActorKey(mobId), targetTitle: title }));
+      emptied.forEach(id => yTokenStates.delete(id));
+      if (combat) setCombat(replaceInOrder(combat, [mobId, ...joining.map(combatantOf)], [mobId]));
+    });
+  };
+
+  // Tokens leave their mobs and act on their own again, right after their mob. A mob
+  // they all leave breaks up there and then, its aspects going to the first of them.
+  // (One left with one member breaks up as it settles, below.)
+  const leaveMob = (members: TokenShape[]) => {
+    const target = writableShapes();
+    if (!gm || !target || !ydoc || !yTokenStates) return;
+    ydoc.transact(() => {
+      let next = combat;
+      for (const mob of new Set(members.map(mobOf))) {
+        if (!mob) continue;
+        const leaving = mobs[mob].filter(t => members.includes(t));
+        for (const token of leaving) {
+          const current = target.get(token.id);
+          if (current?.type !== 'token') continue;
+          const { mob: _, ...rest } = current;
+          target.set(token.id, rest);
+        }
+        if (leaving.length === mobs[mob].length) {
+          aspects.filter(a => a.target === tokenActorKey(mob))
+            .forEach(a => yAspects?.set(a.id, { ...a, target: tokenActorKey(leaving[0].id), targetTitle: tokenLabel(leaving[0]) }));
+          yTokenStates.delete(mob);
+          if (next) next = replaceInOrder(next, [mob], leaving.map(t => t.id));
+        } else if (next) {
+          for (const token of [...leaving].reverse()) next = insertAfter(next, mob, token.id);
+        }
+      }
+      if (next !== combat) setCombat(next);
+    });
+  };
+
+  // Taken out: crossed out on the map, and out of the fight (and their mob).
+  const takeOut = (members: TokenShape[]) => {
+    const target = writableShapes();
+    if (!target || !ydoc) return;
+    ydoc.transact(() => {
+      let next = combat;
+      for (const token of members) {
+        setTokenState(token.id, state => ({ ...state, takenOut: true }));
+        const current = target.get(token.id);
+        if (current?.type === 'token' && current.mob) {
+          const { mob: _, ...rest } = current;
+          target.set(token.id, rest);
+        }
+        if (next) next = withoutCombatant(next, presentTokens(), token.id);
+      }
+      if (next !== combat) setCombat(next);
+    });
+  };
+
+  const backInTheFight = (members: TokenShape[]) => {
+    members.forEach(token => setTokenState(token.id, ({ takenOut: _, ...state }) => state));
+  };
+
+  // A hit on a mob, worked out member by member (see planMobHit).
+  const hitMob = (steps: MobHitStep[]) => {
+    if (!canEdit || !ydoc) return;
+    ydoc.transact(() => {
+      const out: TokenShape[] = [];
+      for (const step of steps) {
+        const token = tokens.find(t => t.id === step.tokenId);
+        if (!token) continue;
+        if (step.box) {
+          const box = step.box;
+          setTokenState(token.id, state => {
+            const { sheet, keys } = withHit(tokenView(token), { box, consequences: [] });
+            return { ...state, ...Object.fromEntries(keys.map(key => [key, getPath(sheet, key)])) };
+          });
+        }
+        if (step.takenOut) out.push(token);
+      }
+      takeOut(out);
+    });
+  };
+
+  // The GM's screen keeps mobs tidy as they change (here, or elsewhere, e.g. a player
+  // deleting a member): members taken out leave their mob; a mob down to one member
+  // breaks up, that member taking over its turn and aspects; and a mob with nobody
+  // left goes, with its aspects and its own copy of its stats.
+  useEffect(() => {
+    if (!gm || !canEdit || !ydoc || !yShapes || !yTokenStates || !yAspects || !yCombat) return;
+    const all = Array.from(yShapes.values()).filter((shape): shape is TokenShape => shape.type === 'token');
+    const out = (token: TokenShape) => Boolean(yTokenStates.get(token.id)?.takenOut);
+    const byMob: { [mobId: string]: TokenShape[] } = {};
+    for (const token of all) if (token.mob) (byMob[token.mob] ??= []).push(token);
+    const state = yCombat.get('state') ?? null;
+    const known = new Set([...Object.keys(byMob), ...Array.from(yTokenStates.keys()).filter(isMobId), ...(state?.order ?? []).filter(isMobId)]);
+    const work: (() => void)[] = [];
+    let next = state;
+    for (const mobId of known) {
+      const members = byMob[mobId] ?? [];
+      const active = members.filter(t => !out(t));
+      const leaving = active.length > 1 ? members.filter(out) : members;
+      if (leaving.length) work.push(() => leaving.forEach(({ mob: _, ...rest }) => yShapes.set(rest.id, rest)));
+      if (active.length > 1) continue;
+      const heir = active[0];
+      Array.from(yAspects.values()).filter(a => a.target === tokenActorKey(mobId)).forEach(a => work.push(() => {
+        if (heir) yAspects.set(a.id, { ...a, target: tokenActorKey(heir.id), targetTitle: tokenLabel(heir) });
+        else yAspects.delete(a.id);
+      }));
+      if (yTokenStates.has(mobId)) work.push(() => yTokenStates.delete(mobId));
+      if (next) next = heir ? replaceInOrder(next, [mobId], [heir.id]) : withoutCombatant(next, new Set(next.order), mobId);
+    }
+    if (next && next !== state) work.push(() => yCombat.set('state', next!));
+    if (work.length) ydoc.transact(() => work.forEach(change => change()));
+  }, [gm, canEdit, ydoc, liveShapes, liveTokenStates, liveCombat]);
 
   const sheetAspects: { [shortname: string]: SheetAspect[] } = Object.fromEntries(Object.entries(sheets).map(([shortname, root]) => {
     const list = root[TEMPORARY_ASPECTS_KEY];
     return [shortname, Array.isArray(list) ? list as SheetAspect[] : []];
   }));
 
-  // The consequences each character in the scene has taken, as aspects.
+  // The consequences each character in the scene has taken, as aspects. A mob's are
+  // its members', each their own.
   const consequenceAspects: { [key: string]: SceneAspect[] } = Object.fromEntries(characters.map(character => {
-    const sheet = actorSheet(character.key);
-    return [character.key, consequenceSlots(sheet).filter(slot => slot.text.trim()).map(slot => ({
-      id: consequenceId(character.key, slot.path),
+    const mobId = tokenIdOfActor(character.key);
+    const holders = mobId && mobs[mobId]
+      ? mobs[mobId].filter(t => tokens.includes(t)).map(t => ({ key: tokenActorKey(t.id), sheet: tokenView(t), title: tokenLabel(t), member: true }))
+      : [{ key: character.key, sheet: actorSheet(character.key), title: character.title, member: false }];
+    return [character.key, holders.flatMap(holder => consequenceSlots(holder.sheet).filter(slot => slot.text.trim()).map(slot => ({
+      id: consequenceId(holder.key, slot.path),
       name: slot.text,
       kind: 'consequence' as const,
-      freeInvokes: consequenceInvokes(sheet, slot.path, slot.text),
+      freeInvokes: consequenceInvokes(holder.sheet, slot.path, slot.text),
       target: character.key,
-      targetTitle: character.title,
-      note: slot.label,
-    }))];
+      targetTitle: holder.title,
+      note: holder.member ? `${slot.label}, ${holder.title}` : slot.label,
+    })))];
   }));
 
   // Each character's own aspects (high concept, trouble...), from their sheet.
@@ -988,7 +1190,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // (or a monster token's own copy) under `key`, with the aspect's text.
   const setStoredInvokes = async (key: typeof CONSEQUENCE_INVOKES_KEY | typeof ASPECT_INVOKES_KEY, actorKey: string, path: string, invokes: number) => {
     const consequence = key === CONSEQUENCE_INVOKES_KEY;
-    const list = consequence ? consequenceAspects[actorKey] : characterAspects[actorKey];
+    // (A mob member's consequences are listed under their mob.)
+    const list = consequence ? Object.values(consequenceAspects).flat() : characterAspects[actorKey];
     const text = list?.find(a => a.id === (consequence ? consequenceId : mainAspectId)(actorKey, path))?.name;
     if (!canEdit || text === undefined) return;
     const withInvokes = consequence ? withConsequenceInvokes : withAspectInvokes;
@@ -1019,7 +1222,15 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // Tags beside a token: its character's sheet's temporary aspects, then the scene's.
   // A monster token only has its own scene aspects.
   // A character's own aspects are only shown while they have free invokes on them.
+  // A mob member has their own consequences, and the mob's aspects go beside its first member.
   const tokenTags = (token: TokenShape): { name: string, freeInvokes: number }[] => {
+    const mob = mobOf(token);
+    if (mob) {
+      const key = tokenActorKey(mob);
+      const own = (consequenceAspects[key] ?? []).filter(a => parseConsequenceId(a.id)?.actorKey === tokenActorKey(token.id));
+      if (mobs[mob].find(t => tokens.includes(t)) !== token) return own;
+      return [...(characterAspects[key] ?? []).filter(a => a.freeInvokes > 0), ...own, ...aspects.filter(a => a.target === key)];
+    }
     const key = isMonster(token) ? tokenActorKey(token.id) : token.itemShortname;
     const invokedOwn = (characterAspects[key] ?? []).filter(a => a.freeInvokes > 0);
     if (isMonster(token)) return [...invokedOwn, ...consequenceAspects[key] ?? [], ...aspects.filter(a => a.target === key)];
@@ -1046,7 +1257,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     ...shownAspects.map(a => ({ id: a.id, name: a.name, freeInvokes: a.freeInvokes, ownerTitle: a.target ? a.targetTitle ?? titleOf(a.target) : SCENE_OWNER })),
   ];
 
-  const addRoll = (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier'>) => {
+  const addRoll = (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier' | 'teamwork'>) => {
     if (!yRolls) return;
     const at = Date.now();
     const entry: Roll = { ...roll, id: `roll-${at}-${Math.random().toString(36).slice(2, 6)}`, at, by: userName, dice: rollFateDice(), invokes: [] };
@@ -1197,14 +1408,17 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   const endScene = async () => {
     const kept = aspects.filter(a => a.kind === 'temporary' && a.target && !tokenIdOfActor(a.target));
-    if (!window.confirm("End the scene? Its situation aspects, advantages and boosts will be cleared, and monsters' stress, consequences and fate points reset. Temporary aspects stay on character sheets.")) return;
+    if (!window.confirm("End the scene? Its situation aspects, advantages and boosts will be cleared, and monsters' and mobs' stress, consequences and fate points reset. Temporary aspects stay on character sheets.")) return;
     // A temporary aspect that couldn't be moved to its sheet stays in the scene.
     for (const aspect of kept) await keepOnSheet(aspect);
     const target = writableAspects();
     if (!target || !ydoc || !yTokenStates) return;
     ydoc.transact(() => {
       aspects.filter(a => !kept.includes(a)).forEach(a => target.delete(a.id));
+      // (Whoever's been taken out stays out.)
+      const out = Array.from(yTokenStates.entries()).filter(([, state]) => state.takenOut).map(([id]) => id);
       yTokenStates.clear();
+      out.forEach(id => yTokenStates.set(id, { takenOut: true }));
     });
   };
 
@@ -1715,6 +1929,16 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const anyLocked = shapes.some(shape => shape.locked);
   const ungroupSelection = () => { if (canUngroup) setGroup(null); };
 
+  // Mobs are the GM's: selected monster tokens of one monster, still in the fight, can
+  // form one (or join the one some of them are in already).
+  const selectedTokens = selectedShapes.length && selectedShapes.every(shape => shape.type === 'token') ? selectedShapes as TokenShape[] : [];
+  const selectedMobs = new Set(selectedTokens.map(mobOf).filter(Boolean));
+  const canFormMob = gm && canEdit && selectedTokens.length >= 2
+    && selectedTokens.every(t => isMonster(t) && !isTakenOut(t) && t.itemShortname === selectedTokens[0].itemShortname)
+    && !(selectedMobs.size === 1 && selectedTokens.every(mobOf));
+  const leavingMob = gm && canEdit ? selectedTokens.filter(mobOf) : [];
+  const takenOutSelected = gm && canEdit ? selectedTokens.filter(isTakenOut) : [];
+
   const renameToken = (shape: TokenShape) => {
     if (!mayEdit(shape)) return;
     setSelectedIds([shape.id]);
@@ -1949,8 +2173,16 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           onDblTap={() => renameToken(s)}
           {...dragProps}
         >
-          {s.id === combat?.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
-          <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
+          {combat?.current && combatantOf(s) === combat.current && <Circle radius={TOKEN_RADIUS + 5} stroke='#f5c542' strokeWidth={3} listening={false} />}
+          {/* A mob's members are ringed in its colour. */}
+          {mobOf(s) && <Circle radius={TOKEN_RADIUS + (combatantOf(s) === combat?.current ? 9 : 5)} stroke={mobColor(mobOf(s)!)} strokeWidth={2.5} dash={[6, 4]} listening={false} />}
+          <Group opacity={isTakenOut(s) ? 0.45 : 1}>
+            <TokenFace color={s.color} portraitUrl={portraitUrl(s.itemShortname)} selected={selected} />
+          </Group>
+          {isTakenOut(s) && <>
+            <Line points={[-14, -14, 14, 14]} stroke='#c62828' strokeWidth={4} lineCap='round' listening={false} />
+            <Line points={[-14, 14, 14, -14]} stroke='#c62828' strokeWidth={4} lineCap='round' listening={false} />
+          </>}
           <Nameplate text={tokenLabel(s)} visible={nameEdit?.id !== s.id} />
           {/* The character's aspects in play, as tags beside the token. */}
           {tokenTags(s).map((tag, i) => (
@@ -2218,6 +2450,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             onToggleStress={toggleStress}
             onSetConsequence={setConsequence}
             onTakeHit={takeHit}
+            canRunMobs={canEdit && gm}
+            onHitMob={hitMob}
+            onLeaveMob={tokenId => leaveMob(tokens.filter(t => t.id === tokenId))}
+            onJoinMob={(tokenId, mobId) => joinMob(tokens.filter(t => t.id === tokenId), mobId)}
             onStart={startCombat}
             onStep={direction => combat && setCombat(stepTurn(combat, presentTokens(), direction))}
             onEnd={() => setCombat(null)}
@@ -2284,6 +2520,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && mayEdit(selectedShapes[0]) && (
               <button onClick={() => renameToken(selectedShapes[0] as TokenShape)} title='Give this token its own name on the map (or double-click it)'>Rename</button>
             )}
+            {canFormMob && <button
+              onClick={() => joinMob(selectedTokens)}
+              title={selectedMobs.size
+                ? 'Put these in the same mob, to act, roll and take hits as one'
+                : 'Make these a mob, which acts, rolls and takes hits as one (Fate Core’s rules for nameless NPCs)'}
+            >{selectedMobs.size ? 'Join mob' : 'Form a mob'}</button>}
+            {leavingMob.length > 0 && <button onClick={() => leaveMob(leavingMob)} title='Take these out of their mob, to act on their own'>Leave mob</button>}
+            {takenOutSelected.length > 0 && <button onClick={() => backInTheFight(takenOutSelected)} title='They weren’t taken out after all'>Back in the fight</button>}
             {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && userId !== undefined && userName && (() => {
               const token = selectedShapes[0] as TokenShape;
               return <MenuButton label='Notes' placement='above' width='min(30rem, calc(100vw - 1rem))' title={`Your own notes on ${token.itemTitle}, which only you can see`}>

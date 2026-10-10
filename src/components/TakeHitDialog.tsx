@@ -6,6 +6,8 @@ import type { ConsequenceSlot, StressTrack } from '../fate/stress';
 export type Hit = {
   box: { path: string, index: number } | null;
   consequences: { path: string, text: string }[];
+  // Whether some of it wasn't absorbed.
+  takenOut?: boolean;
 };
 
 type Props = {
@@ -50,7 +52,7 @@ export default function TakeHitDialog({ label, stress, slots, kind, onApply, onC
   });
 
   const apply = () => {
-    onApply({ box, consequences: Object.entries(chosen).map(([path, text]) => ({ path, text: text.trim() })) });
+    onApply({ box, consequences: Object.entries(chosen).map(([path, text]) => ({ path, text: text.trim() })), ...(remaining > 0 ? { takenOut: true } : {}) });
     onClose();
   };
 

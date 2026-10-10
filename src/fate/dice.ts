@@ -39,6 +39,8 @@ export type Roll = {
   skill?: string;
   skillRating: number;
   modifier: number;
+  // A mob's teamwork bonus (see fate/mobs.ts).
+  teamwork?: number;
   dice: FateDie[];
   invokes: RollInvoke[];
 };
@@ -56,7 +58,7 @@ export const diceTotal = (dice: FateDie[]) => dice.reduce<number>((sum, die) => 
 
 export const isBonus = (invoke: RollInvoke) => (invoke.effect ?? 'bonus') === 'bonus';
 
-export const rollTotal = (roll: Roll) => diceTotal(roll.dice) + roll.skillRating + roll.modifier + 2 * roll.invokes.filter(isBonus).length;
+export const rollTotal = (roll: Roll) => diceTotal(roll.dice) + roll.skillRating + roll.modifier + (roll.teamwork ?? 0) + 2 * roll.invokes.filter(isBonus).length;
 
 const LADDER: { [value: number]: string } = {
   8: 'Legendary', 7: 'Epic', 6: 'Fantastic', 5: 'Superb', 4: 'Great', 3: 'Good',

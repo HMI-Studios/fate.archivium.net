@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import MobHitDialog from './MobHitDialog';
 import TakeHitDialog, { type Hit } from './TakeHitDialog';
 import { CONFLICT_LABELS, modeOf, waitingToAct, type CombatState, type ConflictKind } from '../fate/combat';
+import type { MobHitStep } from '../fate/mobs';
 import type { Consequence, ConsequenceSlot, StressTrack } from '../fate/stress';
 
 // A token on the map, as shown in the turn order.
@@ -16,6 +18,11 @@ export type CombatEntry = {
   consequenceSlots?: ConsequenceSlot[];
   // Every consequence slot they have, for taking a hit.
   slots: ConsequenceSlot[];
+  // A mob (see fate/mobs.ts), under its own id: the members in it, each with their
+  // own stress and consequences. Its own stress and slots are empty.
+  members?: { tokenId: string, label: string, stress: StressTrack[], consequences: Consequence[] }[];
+  // A monster on its own: the mobs of its kind it could join.
+  mobs?: { id: string, label: string }[];
 };
 
 interface Props {
@@ -28,6 +35,11 @@ interface Props {
   onToggleStress: (tokenId: string, path: string, index: number) => void;
   onSetConsequence: (tokenId: string, path: string, text: string) => void;
   onTakeHit: (tokenId: string, hit: Hit) => void;
+  // Mobs are the GM's to change: members leave, and monsters on their own join.
+  canRunMobs: boolean;
+  onHitMob: (steps: MobHitStep[]) => void;
+  onLeaveMob: (tokenId: string) => void;
+  onJoinMob: (tokenId: string, mobId: string) => void;
   onStart: (kind: ConflictKind) => void;
   onStep: (direction: 1 | -1) => void;
   onEnd: () => void;
@@ -83,7 +95,7 @@ function StressRow({ track, canMark, onToggle }: { track: StressTrack, canMark: 
   );
 }
 
-export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onSetConsequence, onTakeHit, onStart, onStep, onEnd, onMove, onRemove, onAdd, canPass, onPass, onNextRound, onUndo, onSetCurrent }: Props) {
+export default function CombatTracker({ state, entries, canRun, canMarkStress, onToggleStress, onSetConsequence, onTakeHit, canRunMobs, onHitMob, onLeaveMob, onJoinMob, onStart, onStep, onEnd, onMove, onRemove, onAdd, canPass, onPass, onNextRound, onUndo, onSetCurrent }: Props) {
   // The combatant whose hit is being worked out, if any.
   const [hitting, setHitting] = useState<string | null>(null);
 
@@ -154,7 +166,7 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
               aria-current={isCurrent ? 'step' : undefined}
               className='d-flex flex-col align-center gap-0'
               style={{
-                flex: '0 0 auto', width: '7.5rem', padding: '0.35rem 0.25rem', borderRadius: 6,
+                flex: '0 0 auto', width: entry.members ? '9.5rem' : '7.5rem', padding: '0.35rem 0.25rem', borderRadius: 6,
                 border: `2px solid ${isCurrent ? CURRENT_COLOR : 'transparent'}`,
                 background: isCurrent ? 'rgb(245 197 66 / 12%)' : undefined,
                 opacity: hasActed ? 0.55 : 1,
@@ -162,14 +174,54 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
             >
               <small style={{ opacity: 0.7 }}>{popcorn ? (isCurrent ? 'acting' : hasActed ? 'acted' : 'waiting') : i + 1}</small>
               <Face entry={entry} size='2.75rem' />
-              <small style={{ textAlign: 'center', overflowWrap: 'anywhere', lineHeight: 1.2, marginTop: 2 }}>{entry.label}</small>
+              <small style={{ textAlign: 'center', overflowWrap: 'anywhere', lineHeight: 1.2, marginTop: 2 }}>
+                {entry.label}{entry.members && <span style={{ opacity: 0.7 }}> ×{entry.members.length}</span>}
+              </small>
+              {entry.members && <ul className='ma-0 pa-0 mt-1 w-100 d-flex flex-col gap-0' style={{ listStyle: 'none' }} aria-label={`${entry.label}'s members`}>
+                {entry.members.map(member => (
+                  <li key={member.tokenId} className='d-flex flex-col' style={{ borderTop: '1px solid var(--tab-border-color, rgba(128, 128, 128, 0.3))', paddingTop: 2 }}>
+                    <span className='d-flex align-center gap-0' style={{ fontSize: '0.75rem' }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={member.label}>{member.label}</span>
+                      {canRunMobs && <button
+                        title='Leave the mob, to act on their own'
+                        aria-label={`${member.label} leaves the mob`}
+                        onClick={() => onLeaveMob(member.tokenId)}
+                        style={{ padding: '0 0.3rem', fontSize: '0.7rem', lineHeight: 1.2 }}
+                      >leave</button>}
+                    </span>
+                    {/* The conflict's own track, if they have one. */}
+                    {(member.stress.filter(track => track.path.endsWith(`.${state.kind}`)).length ? member.stress.filter(track => track.path.endsWith(`.${state.kind}`)) : member.stress).map(track => (
+                      <StressRow key={track.path} track={track} canMark={canMarkStress} onToggle={index => onToggleStress(member.tokenId, track.path, index)} />
+                    ))}
+                    {member.consequences.map(c => (
+                      <span key={c.label} title={`${c.label} (${c.badge}): ${c.text}`} style={{ fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <b>{c.badge}</b> <i>{c.text}</i>
+                      </span>
+                    ))}
+                  </li>
+                ))}
+              </ul>}
               <div className='d-flex flex-col gap-0 mt-1'>
                 {entry.stress.map(track => (
                   <StressRow key={track.path} track={track} canMark={canMarkStress} onToggle={index => onToggleStress(id, track.path, index)} />
                 ))}
               </div>
-              {canMarkStress && (
-                <button className='mt-1' onClick={() => setHitting(id)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
+              {canMarkStress && (entry.members
+                ? <button className='mt-1' onClick={() => setHitting(id)} title='Work out who a hit takes out, one member after another'>Hit the mob</button>
+                : <button className='mt-1' onClick={() => setHitting(id)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
+              )}
+              {canRunMobs && entry.mobs && entry.mobs.length > 0 && (
+                <select
+                  className='mt-1'
+                  aria-label={`Join ${entry.label} to a mob`}
+                  title='Fate Core: a nameless NPC left on its own can join another mob (or flee)'
+                  value=''
+                  onChange={({ target }) => { if (target.value) onJoinMob(id, target.value); }}
+                  style={{ maxWidth: '100%', fontSize: '0.75rem' }}
+                >
+                  <option value=''>Join a mob…</option>
+                  {entry.mobs.map(mob => <option key={mob.id} value={mob.id}>{mob.label}</option>)}
+                </select>
               )}
               {entry.consequences.length > 0 && (
                 <ul className='ma-0 pa-0 mt-1 w-100' style={{ listStyle: 'none' }}>
@@ -226,7 +278,14 @@ export default function CombatTracker({ state, entries, canRun, canMarkStress, o
           ))}
         </div>
       )}
-      {hitting && byId.has(hitting) && <TakeHitDialog
+      {hitting && byId.get(hitting)?.members && <MobHitDialog
+        label={byId.get(hitting)!.label}
+        members={byId.get(hitting)!.members!}
+        kind={state.kind}
+        onApply={onHitMob}
+        onClose={() => setHitting(null)}
+      />}
+      {hitting && byId.has(hitting) && !byId.get(hitting)!.members && <TakeHitDialog
         label={byId.get(hitting)!.label}
         stress={byId.get(hitting)!.stress}
         slots={byId.get(hitting)!.slots}
