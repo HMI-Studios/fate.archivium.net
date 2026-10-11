@@ -16,12 +16,13 @@ import TakeHitDialog from '../components/TakeHitDialog';
 import ToughnessControls, { hasToughness, isToughnessField } from '../components/ToughnessControls';
 import VisibilityControls from '../components/VisibilityControls';
 import { claimOf, type Claim } from '../fate/vaults';
-import { PERMS } from '../perms';
+import { isGameMaster, PERMS } from '../perms';
+import { readSettings } from '../fate/settings';
 import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
 import { aspectsForLayout } from '../fate/aspects';
 import { richTextOf, withRichText } from '../fate/richFields';
-import { entryListValues, evaluate, numberValue, type ComputedField, type TabLayout } from '../layout/core';
+import { entryListValues, evaluate, ladderRatings, numberValue, type ComputedField, type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
 import LayoutTabEditor from '../layout/LayoutTabEditor';
 import { LAYOUT_TAB_CSS } from '../layout/styles';
@@ -169,6 +170,10 @@ export default function Character({ user }: { user: any }) {
   // Monsters and NPCs can have their stress and consequences set by hand, which goes
   // under the stress tracks too (and the layout's own fields for it are hidden).
   const toughness = (access?.itemType === 'monster' || access?.itemType === 'npc') && hasToughness(layout);
+  // Players' characters have the campaign's skill cap, which only GMs can go over.
+  const skillCap = readSettings(universeObjData).skillCap;
+  const capped = access?.itemType === 'pc';
+  const gm = Boolean(universe && isGameMaster(universe, user));
   // The skill points and what the skills cost share a line, laid out like the skills'
   // (so the input lines up with their dropdowns), the cost in red when it's more.
   const skillsSpent = layout.rows.flatMap(row => row.sections.flatMap(section => section.fields))
@@ -236,6 +241,25 @@ export default function Character({ user }: { user: any }) {
       renderField={(field, { id, data, set, standard }) => {
         if (field.widget === 'number' && isToughnessField(field.path)) return <span className='fate-toughness-field' />;
         if (field === skillsSpent) return null;
+        // The ladder shows as many rungs as a character needs: one above their best skill
+        // (and at least up to the cap), or for a player's own character, up to the cap.
+        // Rungs a skill is already on always show. Rows go best first, so the ones above
+        // the top are the first few.
+        if (field.widget === 'ratingLadder') {
+          const ratings = ladderRatings(field, data);
+          const best = Math.max(0, ...Object.values(ratings));
+          const top = capped && !gm ? Math.max(skillCap, best) : Math.max(skillCap, best + 1);
+          const hidden = field.ratings.filter(rating => rating.value > top).length;
+          const over = capped ? Object.keys(ratings).filter(skill => ratings[skill] > skillCap).sort() : [];
+          const capLabel = field.ratings.find(rating => rating.value === skillCap)?.label ?? `+${skillCap}`;
+          return <>
+            {hidden > 0 && <style>{`#${id}-ladder > .tab-layout-line:nth-child(-n+${hidden}) { display: none; }`}</style>}
+            <div id={`${id}-ladder`} style={{ display: 'contents' }}>{standard}</div>
+            {over.length > 0 && <small className='color-error'>
+              Above the campaign's skill cap of {capLabel}: {over.join(', ')}.
+            </small>}
+          </>;
+        }
         if (field.widget === 'number' && field.path === SKILL_POINTS_PATH && skillsSpent) {
           const points = numberValue(field, data) || (field.default ? evaluate(field.default, data) : 0);
           const spent = evaluate(skillsSpent.value, data);

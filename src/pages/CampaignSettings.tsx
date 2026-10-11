@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
 import Breadcrumbs, { archiviumUniverseUrl } from '../components/Breadcrumbs';
 import { readSettings, saveSettings, TURN_ORDER_OPTIONS, type FateSettings } from '../fate/settings';
+import { SKILL_RATINGS } from '../fate/coreLayout';
 import { isGameMaster } from '../perms';
 import type { Campaign } from './Campaign';
 
@@ -86,6 +87,21 @@ export default function CampaignSettings({ user }: Props) {
         </label>
       ))}
       <small style={{ opacity: 0.8 }}>A conflict that's already running keeps the turn order it started with.</small>
+    </fieldset>
+
+    <fieldset className='d-flex flex-col gap-2 mt-3' disabled={!canEdit} style={{ border: '1px solid var(--tab-border-color, #4f4f4f)', borderRadius: 6 }}>
+      <legend><b>Skill cap</b></legend>
+      <label className='d-flex align-center gap-2'>
+        Players' characters go up to
+        <select value={settings.skillCap} onChange={({ target }) => change({ skillCap: Number(target.value) })}>
+          {SKILL_RATINGS.map(rating => <option key={rating.value} value={rating.value}>{rating.label}</option>)}
+        </select>
+      </label>
+      <small style={{ opacity: 0.8 }}>
+        Players can't rate a skill higher than this on their characters. GMs can (a character who
+        goes over gets a warning), and NPCs and monsters have no cap. Fate Core starts characters
+        at Great (+4), and raises the cap as they reach major milestones.
+      </small>
     </fieldset>
 
     <p className='mt-3'>

@@ -13,6 +13,20 @@ const CORE_SKILLS = [
   'Provoke', 'Rapport', 'Resources', 'Shoot', 'Stealth', 'Will',
 ];
 
+// The adjective ladder, best first. The sheet only shows as much of it as a character
+// needs (see pages/Character.tsx), so the rungs above Superb are for monsters, or
+// campaigns that let characters go that high (FateSettings.skillCap).
+export const SKILL_RATINGS = [
+  { value: 8, label: 'Legendary (+8)' },
+  { value: 7, label: 'Epic (+7)' },
+  { value: 6, label: 'Fantastic (+6)' },
+  { value: 5, label: 'Superb (+5)' },
+  { value: 4, label: 'Great (+4)' },
+  { value: 3, label: 'Good (+3)' },
+  { value: 2, label: 'Fair (+2)' },
+  { value: 1, label: 'Average (+1)' },
+];
+
 // Refresh starts at 3, and each stunt beyond the three free ones costs 1.
 const refresh: Expr = { sub: [{ const: 3 }, { max: [{ const: 0 }, { sub: [{ count: 'stunts' }, { const: 3 }] }] }] };
 
@@ -132,13 +146,7 @@ export const FATE_CORE_LAYOUT: TabLayout = {
               widget: 'ratingLadder',
               path: 'skills',
               options: CORE_SKILLS,
-              ratings: [
-                { value: 5, label: 'Superb (+5)' },
-                { value: 4, label: 'Great (+4)' },
-                { value: 3, label: 'Good (+3)' },
-                { value: 2, label: 'Fair (+2)' },
-                { value: 1, label: 'Average (+1)' },
-              ],
+              ratings: SKILL_RATINGS,
               rule: 'pyramid',
             },
           ],

@@ -1,4 +1,5 @@
 import { ARCHIVIUM_URL } from '../App';
+import { SKILL_RATINGS } from './coreLayout';
 
 // Per-campaign settings for this app, stored on the universe as obj_data.fateSettings.
 
@@ -7,12 +8,16 @@ export type TurnOrderMode = 'initiative' | 'popcorn';
 export type FateSettings = {
   // How conflicts decide who acts next.
   turnOrder: TurnOrderMode;
+  // The highest rating players can give a skill on their characters. GMs can go
+  // higher (a PC who does gets a warning), and NPCs and monsters aren't capped.
+  skillCap: number;
 };
 
 export const FATE_SETTINGS_KEY = 'fateSettings';
 
 export const DEFAULT_SETTINGS: FateSettings = {
   turnOrder: 'initiative',
+  skillCap: 5,
 };
 
 export const TURN_ORDER_OPTIONS: { mode: TurnOrderMode, label: string, description: string }[] = [
@@ -35,6 +40,7 @@ export function readSettings(universeObjData: unknown): FateSettings {
   const settings = stored && typeof stored === 'object' ? stored as Partial<FateSettings> : {};
   return {
     turnOrder: TURN_ORDER_OPTIONS.some(o => o.mode === settings.turnOrder) ? settings.turnOrder! : DEFAULT_SETTINGS.turnOrder,
+    skillCap: SKILL_RATINGS.some(r => r.value === settings.skillCap) ? settings.skillCap! : DEFAULT_SETTINGS.skillCap,
   };
 }
 
