@@ -20,7 +20,7 @@ export type CombatEntry = {
   slots: ConsequenceSlot[];
   // A mob (see fate/mobs.ts), under its own id: the members in it, each with their
   // own stress and consequences. Its own stress and slots are empty.
-  members?: { tokenId: string, label: string, stress: StressTrack[], consequences: Consequence[] }[];
+  members?: { tokenId: string, label: string, stress: StressTrack[], consequences: Consequence[], slots: ConsequenceSlot[] }[];
   // A monster on its own: the mobs of its kind it could join.
   mobs?: { id: string, label: string }[];
 };

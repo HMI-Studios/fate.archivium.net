@@ -860,6 +860,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
           label: tokenLabel(member),
           stress: stressTracks(tokenView(member)),
           consequences: takenConsequences(tokenView(member)),
+          slots: consequenceSlots(tokenView(member)),
         })),
       });
       continue;
@@ -1054,10 +1055,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       for (const step of steps) {
         const token = tokens.find(t => t.id === step.tokenId);
         if (!token) continue;
-        if (step.box) {
-          const box = step.box;
+        if (step.box || step.consequences.length) {
+          const hit = { box: step.box, consequences: step.consequences.map(({ path, text }) => ({ path, text })) };
           setTokenState(token.id, state => {
-            const { sheet, keys } = withHit(tokenView(token), { box, consequences: [] });
+            const { sheet, keys } = withHit(tokenView(token), hit);
             return { ...state, ...Object.fromEntries(keys.map(key => [key, getPath(sheet, key)])) };
           });
         }

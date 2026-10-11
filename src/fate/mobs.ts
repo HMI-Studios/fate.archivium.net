@@ -1,5 +1,5 @@
 import type { ConflictKind } from './combat';
-import type { StressTrack } from './stress';
+import type { ConsequenceSlot, StressTrack } from './stress';
 
 // Mobs (Fate Core, "Creating and Playing the Opposition"): identical nameless NPCs
 // grouped to act as one. The GM groups monster tokens of the same monster into a mob
@@ -7,7 +7,7 @@ import type { StressTrack } from './stress';
 // - takes one turn, and rolls once, with the teamwork bonus: +1 for each other member
 //   who has the skill at Average (+1) or better;
 // - takes hits as a group: whatever a hit has left over after taking out one member
-//   carries on to the next;
+//   carries on to the next (members soak with stress, and consequences if the GM lets them);
 // - breaks up when it's down to one member, who can join another mob (or flee).
 //
 // A mob is a scene actor of its own (keyed like a monster token, by its id), with its
@@ -21,15 +21,23 @@ export const newMobId = () => `${MOB_PREFIX}${Date.now()}-${Math.random().toStri
 // adds +1. A mob's members are identical, so either all of them help or none do.
 export const teamworkBonus = (helpers: number, rating: number) => rating >= 1 ? Math.max(0, helpers) : 0;
 
-export type MobMember = { tokenId: string, label: string, stress: StressTrack[] };
+export type MobMember = {
+  tokenId: string,
+  label: string,
+  stress: StressTrack[],
+  // Their consequence slots (filled ones can't take more), if hits may use them.
+  slots?: ConsequenceSlot[],
+};
 
-// What a hit on a mob does to one member: marks a stress box, or takes them out.
+// What a hit on a mob does to one member: marks a stress box (and maybe consequences),
+// or takes them out.
 export type MobHitStep = {
   tokenId: string;
   label: string;
   // How many of the hit's shifts this member took.
   shifts: number;
   box: { path: string, index: number } | null;
+  consequences: ConsequenceSlot[];
   takenOut: boolean;
 };
 
@@ -38,28 +46,45 @@ export type MobHitStep = {
 const trackFor = (stress: StressTrack[], kind: ConflictKind | undefined) =>
   stress.find(track => track.path.endsWith(`.${kind}`)) ?? stress[0];
 
-// Works through the members in order. Nameless NPCs don't take consequences: each
-// one soaks what one stress box can (the smallest free box big enough), and anything
-// more takes them out, using up a shift more than their biggest free box; the rest
-// goes on to the next member. Returns the steps, and any shifts left over once
-// everyone's out.
-export function planMobHit(members: MobMember[], shifts: number, kind?: ConflictKind): { steps: MobHitStep[], leftOver: number } {
+// Every way a member could soak a hit: at most one free stress box, and any of their
+// free consequence slots.
+function soaks(member: MobMember, kind: ConflictKind | undefined, consequences: boolean) {
+  const track = trackFor(member.stress, kind);
+  const boxes = [null, ...(track?.boxes ?? []).flatMap((box, index) => box.enabled && !box.checked ? [{ path: track!.path, index }] : [])];
+  const free = consequences ? (member.slots ?? []).filter(slot => !slot.text.trim()) : [];
+  const sets = free.reduce<ConsequenceSlot[][]>((all, slot) => [...all, ...all.map(set => [...set, slot])], [[]]);
+  return boxes.flatMap(box => sets.map(set => ({
+    box,
+    consequences: set,
+    value: (box ? box.index + 1 : 0) + set.reduce((sum, slot) => sum + Number(slot.badge), 0),
+  })));
+}
+
+const worst = (slots: ConsequenceSlot[]) => Math.max(0, ...slots.map(slot => Number(slot.badge)));
+
+// Works through the members in order. Nameless NPCs don't take consequences (Fate
+// Core), so by default each one soaks what one stress box can; with `consequences`
+// (for tougher monsters) they can take consequences too. A member who can soak what's
+// left of the hit does, as lightly as they can (the mildest worst consequence, then
+// the fewest, then the smallest box); otherwise they're taken out, using up a shift more than they could
+// have soaked, and the rest goes on to the next member. Returns the steps, and any
+// shifts left over once everyone's out.
+export function planMobHit(members: MobMember[], shifts: number, kind?: ConflictKind, consequences = false): { steps: MobHitStep[], leftOver: number } {
   const steps: MobHitStep[] = [];
   let remaining = shifts;
   for (const member of members) {
     if (remaining <= 0) break;
-    const track = trackFor(member.stress, kind);
-    const free = (track?.boxes ?? [])
-      .map((box, index) => ({ index, value: index + 1, usable: box.enabled && !box.checked }))
-      .filter(box => box.usable);
-    const fits = free.find(box => box.value >= remaining);
-    if (fits && track) {
-      steps.push({ tokenId: member.tokenId, label: member.label, shifts: remaining, box: { path: track.path, index: fits.index }, takenOut: false });
+    const options = soaks(member, kind, consequences);
+    const fits = options
+      .filter(option => option.value >= remaining)
+      .sort((a, b) => worst(a.consequences) - worst(b.consequences) || a.consequences.length - b.consequences.length || a.value - b.value)[0];
+    if (fits) {
+      steps.push({ tokenId: member.tokenId, label: member.label, shifts: remaining, box: fits.box, consequences: fits.consequences, takenOut: false });
       remaining = 0;
       break;
     }
-    const takesOut = (free.length ? free[free.length - 1].value : 0) + 1;
-    steps.push({ tokenId: member.tokenId, label: member.label, shifts: Math.min(takesOut, remaining), box: null, takenOut: true });
+    const takesOut = Math.max(...options.map(option => option.value)) + 1;
+    steps.push({ tokenId: member.tokenId, label: member.label, shifts: Math.min(takesOut, remaining), box: null, consequences: [], takenOut: true });
     remaining -= takesOut;
   }
   return { steps, leftOver: Math.max(0, remaining) };
