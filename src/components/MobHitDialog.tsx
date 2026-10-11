@@ -13,18 +13,16 @@ type Props = {
 
 // A hit on a mob (Fate Core): it takes out one member after another, each one's
 // leftover shifts going on to the next, until a member can soak what's left with a
-// stress box (and, for tougher monsters, consequences, if the GM ticks the box). The GM
-// picks who's hit first; the rest follow in order. The consequences planned are named
-// here, as they are when a character takes a hit.
+// stress box and whatever consequences their sheet gives them (none, for nameless NPCs
+// with theirs set by hand). The GM picks who's hit first; the rest follow in order. The
+// consequences planned are named here, as they are when a character takes a hit.
 export default function MobHitDialog({ label, members, kind, onApply, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [shifts, setShifts] = useState('');
   const [first, setFirst] = useState(members[0]?.tokenId ?? '');
-  const [useConsequences, setUseConsequences] = useState(false);
   // Names for the consequences planned, by member and slot.
   const [names, setNames] = useState<{ [key: string]: string }>({});
   const nameKey = (tokenId: string, path: string) => `${tokenId}:${path}`;
-  const canTakeConsequences = members.some(m => m.slots?.some(slot => !slot.text.trim()));
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -33,7 +31,7 @@ export default function MobHitDialog({ label, members, kind, onApply, onClose }:
   const hit = Math.max(0, parseInt(shifts, 10) || 0);
   const start = Math.max(0, members.findIndex(m => m.tokenId === first));
   const ordered = [...members.slice(start), ...members.slice(0, start)];
-  const { steps, leftOver } = planMobHit(ordered, hit, kind, useConsequences);
+  const { steps, leftOver } = planMobHit(ordered, hit, kind);
   const out = steps.filter(step => step.takenOut).length;
   const unnamed = steps.some(step => step.consequences.some(slot => !names[nameKey(step.tokenId, slot.path)]?.trim()));
 
@@ -58,13 +56,10 @@ export default function MobHitDialog({ label, members, kind, onApply, onClose }:
     <form method='dialog' className='d-flex flex-col gap-2' onSubmit={e => { e.preventDefault(); if (hit > 0 && !unnamed) apply(); }}>
       <h3 id='mob-hit-title' className='ma-0'>{label} takes a hit</h3>
       <small style={{ opacity: 0.8 }}>
-        Whatever it takes to take out one member carries on to the next. Nameless NPCs soak hits with
-        their stress alone; let tougher ones take consequences too.
+        Whatever it takes to take out one member carries on to the next. Members take the
+        consequences their sheet gives them: set a monster's stress and consequences by hand
+        on its sheet (nameless NPCs have none).
       </small>
-      {canTakeConsequences && <label className='d-flex align-center gap-1'>
-        <input type='checkbox' checked={useConsequences} onChange={({ target }) => setUseConsequences(target.checked)} />
-        Members take consequences
-      </label>}
 
       <div className='d-flex gap-2 flex-wrap align-center'>
         <label className='d-flex align-center gap-1'>

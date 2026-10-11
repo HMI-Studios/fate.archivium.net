@@ -7,7 +7,7 @@ import type { ConsequenceSlot, StressTrack } from './stress';
 // - takes one turn, and rolls once, with the teamwork bonus: +1 for each other member
 //   who has the skill at Average (+1) or better;
 // - takes hits as a group: whatever a hit has left over after taking out one member
-//   carries on to the next (members soak with stress, and consequences if the GM lets them);
+//   carries on to the next (members soak with stress, and consequences if their sheet gives them any);
 // - breaks up when it's down to one member, who can join another mob (or flee).
 //
 // A mob is a scene actor of its own (keyed like a monster token, by its id), with its
@@ -48,10 +48,10 @@ const trackFor = (stress: StressTrack[], kind: ConflictKind | undefined) =>
 
 // Every way a member could soak a hit: at most one free stress box, and any of their
 // free consequence slots.
-function soaks(member: MobMember, kind: ConflictKind | undefined, consequences: boolean) {
+function soaks(member: MobMember, kind: ConflictKind | undefined) {
   const track = trackFor(member.stress, kind);
   const boxes = [null, ...(track?.boxes ?? []).flatMap((box, index) => box.enabled && !box.checked ? [{ path: track!.path, index }] : [])];
-  const free = consequences ? (member.slots ?? []).filter(slot => !slot.text.trim()) : [];
+  const free = (member.slots ?? []).filter(slot => !slot.text.trim());
   const sets = free.reduce<ConsequenceSlot[][]>((all, slot) => [...all, ...all.map(set => [...set, slot])], [[]]);
   return boxes.flatMap(box => sets.map(set => ({
     box,
@@ -62,19 +62,19 @@ function soaks(member: MobMember, kind: ConflictKind | undefined, consequences: 
 
 const worst = (slots: ConsequenceSlot[]) => Math.max(0, ...slots.map(slot => Number(slot.badge)));
 
-// Works through the members in order. Nameless NPCs don't take consequences (Fate
-// Core), so by default each one soaks what one stress box can; with `consequences`
-// (for tougher monsters) they can take consequences too. A member who can soak what's
+// Works through the members in order, each soaking with a stress box and the
+// consequences their sheet gives them (nameless NPCs, per Fate Core, have their
+// stress and consequences set by hand, with none of the latter). A member who can soak what's
 // left of the hit does, as lightly as they can (the mildest worst consequence, then
 // the fewest, then the smallest box); otherwise they're taken out, using up a shift more than they could
 // have soaked, and the rest goes on to the next member. Returns the steps, and any
 // shifts left over once everyone's out.
-export function planMobHit(members: MobMember[], shifts: number, kind?: ConflictKind, consequences = false): { steps: MobHitStep[], leftOver: number } {
+export function planMobHit(members: MobMember[], shifts: number, kind?: ConflictKind): { steps: MobHitStep[], leftOver: number } {
   const steps: MobHitStep[] = [];
   let remaining = shifts;
   for (const member of members) {
     if (remaining <= 0) break;
-    const options = soaks(member, kind, consequences);
+    const options = soaks(member, kind);
     const fits = options
       .filter(option => option.value >= remaining)
       .sort((a, b) => worst(a.consequences) - worst(b.consequences) || a.consequences.length - b.consequences.length || a.value - b.value)[0];
