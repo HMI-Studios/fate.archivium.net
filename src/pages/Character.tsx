@@ -13,6 +13,7 @@ import RichText from '../components/RichText';
 import RichEntryList from '../components/RichEntryList';
 import StuntList from '../components/StuntList';
 import TakeHitDialog from '../components/TakeHitDialog';
+import ToughnessControls, { hasToughness, isToughnessField } from '../components/ToughnessControls';
 import VisibilityControls from '../components/VisibilityControls';
 import { claimOf, type Claim } from '../fate/vaults';
 import { PERMS } from '../perms';
@@ -50,6 +51,7 @@ const READ_ONLY_CSS = `
 .sheet-readonly .tab-layout :is(input, select, textarea):disabled { opacity: 1; color: var(--text-color); cursor: default; }
 .sheet-readonly .tab-layout select:disabled { appearance: none; }
 .sheet-readonly .tab-layout input:disabled::placeholder { color: transparent; }
+.tab-layout-row:has(.fate-toughness-field) { display: none; }
 `;
 
 export default function Character({ user }: { user: any }) {
@@ -164,6 +166,9 @@ export default function Character({ user }: { user: any }) {
 
   // The Take a hit button goes under the sheet's last stress track.
   const lastTrack = layout.rows.flatMap(row => row.sections.flatMap(section => section.fields)).filter(field => field.widget === 'checkTrack').pop();
+  // Monsters and NPCs can have their stress and consequences set by hand, which goes
+  // under the stress tracks too (and the layout's own fields for it are hidden).
+  const toughness = (access?.itemType === 'monster' || access?.itemType === 'npc') && hasToughness(layout);
 
   return <div className={`d-flex flex-col gap-3${canEdit ? '' : ' sheet-readonly'}`}>
     <style>{LAYOUT_TAB_CSS}{READ_ONLY_CSS}</style>
@@ -225,11 +230,13 @@ export default function Character({ user }: { user: any }) {
         save(next);
       }}
       renderField={(field, { id, data, set, standard }) => {
-        if (field === lastTrack && canEdit) return <>
+        if (field.widget === 'number' && isToughnessField(field.path)) return <span className='fate-toughness-field' />;
+        if (field === lastTrack && (canEdit || toughness)) return <>
           {standard}
-          <div>
+          {toughness && <ToughnessControls layout={layout} data={data} set={set} />}
+          {canEdit && <div>
             <button type='button' onClick={() => setTakingHit(true)} title='Work out which stress and consequences absorb a hit'>Take a hit</button>
-          </div>
+          </div>}
         </>;
         // Multiline text (like the description) takes rich text, kept as the entry
         // lists below keep theirs (see fate/richFields.ts).

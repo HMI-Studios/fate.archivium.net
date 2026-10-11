@@ -16,11 +16,37 @@ const CORE_SKILLS = [
 // Refresh starts at 3, and each stunt beyond the three free ones costs 1.
 const refresh: Expr = { sub: [{ const: 3 }, { max: [{ const: 0 }, { sub: [{ count: 'stunts' }, { const: 3 }] }] }] };
 
-// Stress boxes: 2, 3 at Average/Fair, 4 at Good or better.
-const stressBoxes = (skill: string): Expr => ({ step: { path: `skills.${skill}` }, steps: [[3, 4], [1, 3]], else: 2 });
+// Characters who don't follow the PCs' rules for stress and consequences (Fate Core's
+// nameless and supporting NPCs, say) have theirs set by hand: with `byHand` at 1, the
+// sheet's own numbers of stress boxes and consequences (mild first) replace the rules'.
+export const TOUGHNESS_PATHS = {
+  byHand: 'toughness.byHand',
+  physical: 'toughness.physical',
+  mental: 'toughness.mental',
+  consequences: 'toughness.consequences',
+} as const;
 
-// Superb (+5) Physique / Will grants an extra mild consequence.
-const superb = (skill: string): Expr => ({ gte: [{ path: `skills.${skill}` }, { const: 5 }] });
+// `set` when set by hand, otherwise `rule`. Expressions have no conditional, so this
+// pushes whichever doesn't apply out of the way of a min (values are well under 100).
+const byHand = (set: Expr, rule: Expr): Expr => ({ min: [
+  { add: [set, { step: { path: TOUGHNESS_PATHS.byHand }, steps: [[1, 0]], else: 100 }] },
+  { add: [rule, { step: { path: TOUGHNESS_PATHS.byHand }, steps: [[1, 100]], else: 0 }] },
+] });
+
+// Stress boxes: 2, 3 at Average/Fair, 4 at Good or better.
+const stressBoxes = (skill: string, track: 'physical' | 'mental'): Expr => byHand(
+  { path: TOUGHNESS_PATHS[track] },
+  { step: { path: `skills.${skill}` }, steps: [[3, 4], [1, 3]], else: 2 },
+);
+
+// Whether a character has the consequence that comes `rank`th (1 = mild): everyone
+// does by the rules.
+const hasConsequence = (rank: number): Expr => ({ gte: [byHand({ path: TOUGHNESS_PATHS.consequences }, { const: 3 }), { const: rank }] });
+const byHandHint = 'Stress and consequences are set by hand';
+
+// Superb (+5) Physique / Will grants an extra mild consequence (unless the
+// consequences are set by hand; see TOUGHNESS_PATHS).
+const superb = (skill: string): Expr => byHand({ const: 0 }, { gte: [{ path: `skills.${skill}` }, { const: 5 }] });
 
 export const FATE_CORE_LAYOUT: TabLayout = {
   version: 1,
@@ -130,20 +156,30 @@ export const FATE_CORE_LAYOUT: TabLayout = {
         {
           title: 'Stress',
           fields: [
-            { widget: 'checkTrack', path: 'stress.physical', label: 'Physical', boxes: 4, available: stressBoxes('Physique'), lockedHint: 'Unlocked by a higher Physique' },
-            { widget: 'checkTrack', path: 'stress.mental', label: 'Mental', boxes: 4, available: stressBoxes('Will'), lockedHint: 'Unlocked by a higher Will' },
+            { widget: 'checkTrack', path: 'stress.physical', label: 'Physical', boxes: 4, available: stressBoxes('Physique', 'physical'), lockedHint: 'Unlocked by a higher Physique' },
+            { widget: 'checkTrack', path: 'stress.mental', label: 'Mental', boxes: 4, available: stressBoxes('Will', 'mental'), lockedHint: 'Unlocked by a higher Will' },
           ],
         },
         {
           title: 'Consequences',
           fields: [
-            { widget: 'slot', path: 'consequences.mild', badge: '2', label: 'Mild' },
-            { widget: 'slot', path: 'consequences.moderate', badge: '4', label: 'Moderate' },
-            { widget: 'slot', path: 'consequences.severe', badge: '6', label: 'Severe' },
+            { widget: 'slot', path: 'consequences.mild', badge: '2', label: 'Mild', enabled: hasConsequence(1), lockedHint: byHandHint },
+            { widget: 'slot', path: 'consequences.moderate', badge: '4', label: 'Moderate', enabled: hasConsequence(2), lockedHint: byHandHint },
+            { widget: 'slot', path: 'consequences.severe', badge: '6', label: 'Severe', enabled: hasConsequence(3), lockedHint: byHandHint },
             { widget: 'slot', path: 'consequences.mildPhysical', badge: '2', label: 'Mild (physical)', enabled: superb('Physique'), lockedHint: 'Unlocked by Superb (+5) Physique' },
             { widget: 'slot', path: 'consequences.mildMental', badge: '2', label: 'Mild (mental)', enabled: superb('Will'), lockedHint: 'Unlocked by Superb (+5) Will' },
           ],
         },
+      ],
+    },
+    {
+      // The override above. This app hides this row and shows its own controls beside
+      // the stress tracks instead (on monsters' and NPCs' sheets).
+      sections: [
+        { title: 'Set by hand (1 = yes)', variant: 'stat', basis: '9rem', fields: [{ widget: 'number', path: TOUGHNESS_PATHS.byHand, label: 'Stress and consequences set by hand (1) or by the rules (0)', min: 0 }] },
+        { title: 'Physical stress boxes', variant: 'stat', basis: '9rem', fields: [{ widget: 'number', path: TOUGHNESS_PATHS.physical, label: 'Physical stress boxes, when set by hand', min: 0 }] },
+        { title: 'Mental stress boxes', variant: 'stat', basis: '9rem', fields: [{ widget: 'number', path: TOUGHNESS_PATHS.mental, label: 'Mental stress boxes, when set by hand', min: 0 }] },
+        { title: 'Consequences', variant: 'stat', basis: '9rem', fields: [{ widget: 'number', path: TOUGHNESS_PATHS.consequences, label: 'Consequences (mild first), when set by hand', min: 0 }] },
       ],
     },
     {
