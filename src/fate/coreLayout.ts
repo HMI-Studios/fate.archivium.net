@@ -35,7 +35,9 @@ const byHand = (set: Expr, rule: Expr): Expr => ({ min: [
 
 // Skill points: each skill costs its rating. Fate Core's characters start with 20 (a
 // Great, two Good, three Fair and four Average), which is what an unset (or 0) total means.
-const skillPoints: Expr = { add: [{ path: 'skillPoints' }, { step: { path: 'skillPoints' }, steps: [[1, 0]], else: 20 }] };
+export const SKILL_POINTS_PATH = 'skillPoints';
+export const SKILLS_SPENT_LABEL = 'Skill points spent';
+const skillPoints: Expr = { add: [{ path: SKILL_POINTS_PATH }, { step: { path: SKILL_POINTS_PATH }, steps: [[1, 0]], else: 20 }] };
 const skillsCost: Expr = { add: CORE_SKILLS.map(skill => ({ path: `skills.${skill}` })) };
 
 // Stress boxes: 2, 3 at Average/Fair, 4 at Good or better.
@@ -70,8 +72,6 @@ export const FATE_CORE_LAYOUT: TabLayout = {
         },
         { title: 'Refresh', variant: 'stat', basis: '6rem', fields: [{ widget: 'computed', label: 'Refresh', value: refresh }] },
         { title: 'Fate Points', variant: 'stat', basis: '6rem', fields: [{ widget: 'number', path: 'fatePoints', label: 'Fate points', default: refresh, min: 0 }] },
-        { title: 'Skill Points', variant: 'stat', basis: '6rem', fields: [{ widget: 'number', path: 'skillPoints', label: 'Skill points', default: { const: 20 }, min: 0 }] },
-        { title: 'Points Spent', variant: 'stat', basis: '6rem', fields: [{ widget: 'computed', label: 'Skill points spent', value: skillsCost }] },
       ],
     },
     {
@@ -124,19 +124,24 @@ export const FATE_CORE_LAYOUT: TabLayout = {
         },
         {
           title: 'Skills',
-          fields: [{
-            widget: 'ratingLadder',
-            path: 'skills',
-            options: CORE_SKILLS,
-            ratings: [
-              { value: 5, label: 'Superb (+5)' },
-              { value: 4, label: 'Great (+4)' },
-              { value: 3, label: 'Good (+3)' },
-              { value: 2, label: 'Fair (+2)' },
-              { value: 1, label: 'Average (+1)' },
-            ],
-            rule: 'pyramid',
-          }],
+          // This app shows the points and what's spent on one line (pages/Character.tsx).
+          fields: [
+            { widget: 'number', path: SKILL_POINTS_PATH, label: 'Skill points', default: { const: 20 }, min: 0 },
+            { widget: 'computed', label: SKILLS_SPENT_LABEL, value: skillsCost },
+            {
+              widget: 'ratingLadder',
+              path: 'skills',
+              options: CORE_SKILLS,
+              ratings: [
+                { value: 5, label: 'Superb (+5)' },
+                { value: 4, label: 'Great (+4)' },
+                { value: 3, label: 'Good (+3)' },
+                { value: 2, label: 'Fair (+2)' },
+                { value: 1, label: 'Average (+1)' },
+              ],
+              rule: 'pyramid',
+            },
+          ],
         },
       ],
     },

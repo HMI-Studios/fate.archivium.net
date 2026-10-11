@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router';
 import { ARCHIVIUM_URL } from '../App';
-import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
+import { FATE_CORE_LAYOUT, SKILL_POINTS_PATH, SKILLS_SPENT_LABEL } from '../fate/coreLayout';
 import { portraitOf, withPortrait, type GalleryImage } from '../fate/portrait';
 import { layoutTabData, saveSheetChanges } from '../fate/sheetData';
 import Breadcrumbs, { archiviumItemUrl } from '../components/Breadcrumbs';
@@ -21,7 +21,7 @@ import { consequenceSlots, stressTracks, withHit } from '../fate/stress';
 import { fetchStunt, linkOf, STUNTS_PATH, withStuntCopies, type Stunt, type StuntEntry } from '../fate/stunts';
 import { aspectsForLayout } from '../fate/aspects';
 import { richTextOf, withRichText } from '../fate/richFields';
-import { entryListValues, type TabLayout } from '../layout/core';
+import { entryListValues, evaluate, numberValue, type ComputedField, type TabLayout } from '../layout/core';
 import { tabTypesOf } from '../layout/typeConfig';
 import LayoutTabEditor from '../layout/LayoutTabEditor';
 import { LAYOUT_TAB_CSS } from '../layout/styles';
@@ -169,6 +169,9 @@ export default function Character({ user }: { user: any }) {
   // Monsters and NPCs can have their stress and consequences set by hand, which goes
   // under the stress tracks too (and the layout's own fields for it are hidden).
   const toughness = (access?.itemType === 'monster' || access?.itemType === 'npc') && hasToughness(layout);
+  // The skill points and what the skills cost share a line, the latter in red when it's more.
+  const skillsSpent = layout.rows.flatMap(row => row.sections.flatMap(section => section.fields))
+    .find((field): field is ComputedField => field.widget === 'computed' && field.label === SKILLS_SPENT_LABEL);
 
   return <div className={`d-flex flex-col gap-3${canEdit ? '' : ' sheet-readonly'}`}>
     <style>{LAYOUT_TAB_CSS}{READ_ONLY_CSS}</style>
@@ -231,6 +234,26 @@ export default function Character({ user }: { user: any }) {
       }}
       renderField={(field, { id, data, set, standard }) => {
         if (field.widget === 'number' && isToughnessField(field.path)) return <span className='fate-toughness-field' />;
+        if (field === skillsSpent) return null;
+        if (field.widget === 'number' && field.path === SKILL_POINTS_PATH && skillsSpent) {
+          const points = numberValue(field, data) || (field.default ? evaluate(field.default, data) : 0);
+          const spent = evaluate(skillsSpent.value, data);
+          return <div className='d-flex align-center gap-3 flex-wrap'>
+            <label htmlFor={id} className='d-flex align-center gap-1'>
+              {field.label}
+              <input
+                id={id}
+                type='number'
+                min={field.min}
+                className='center'
+                style={{ width: '4rem' }}
+                value={numberValue(field, data)}
+                onChange={({ target }) => set(field.path, target.value === '' ? null : Number(target.value))}
+              />
+            </label>
+            <span className={spent > points ? 'color-error' : undefined}>Spent <b>{spent}</b></span>
+          </div>;
+        }
         if (field === lastTrack && (canEdit || toughness)) return <>
           {standard}
           {toughness && <ToughnessControls layout={layout} data={data} set={set} />}
