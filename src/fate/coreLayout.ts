@@ -33,6 +33,11 @@ const byHand = (set: Expr, rule: Expr): Expr => ({ min: [
   { add: [rule, { step: { path: TOUGHNESS_PATHS.byHand }, steps: [[1, 100]], else: 0 }] },
 ] });
 
+// Skill points: each skill costs its rating. Fate Core's characters start with 20 (a
+// Great, two Good, three Fair and four Average), which is what an unset (or 0) total means.
+const skillPoints: Expr = { add: [{ path: 'skillPoints' }, { step: { path: 'skillPoints' }, steps: [[1, 0]], else: 20 }] };
+const skillsCost: Expr = { add: CORE_SKILLS.map(skill => ({ path: `skills.${skill}` })) };
+
 // Stress boxes: 2, 3 at Average/Fair, 4 at Good or better.
 const stressBoxes = (skill: string, track: 'physical' | 'mental'): Expr => byHand(
   { path: TOUGHNESS_PATHS[track] },
@@ -65,6 +70,8 @@ export const FATE_CORE_LAYOUT: TabLayout = {
         },
         { title: 'Refresh', variant: 'stat', basis: '6rem', fields: [{ widget: 'computed', label: 'Refresh', value: refresh }] },
         { title: 'Fate Points', variant: 'stat', basis: '6rem', fields: [{ widget: 'number', path: 'fatePoints', label: 'Fate points', default: refresh, min: 0 }] },
+        { title: 'Skill Points', variant: 'stat', basis: '6rem', fields: [{ widget: 'number', path: 'skillPoints', label: 'Skill points', default: { const: 20 }, min: 0 }] },
+        { title: 'Points Spent', variant: 'stat', basis: '6rem', fields: [{ widget: 'computed', label: 'Skill points spent', value: skillsCost }] },
       ],
     },
     {
@@ -204,5 +211,6 @@ export const FATE_CORE_LAYOUT: TabLayout = {
   ],
   checks: [
     { unless: { gte: [refresh, { const: 1 }] }, message: 'Too many stunts: refresh can\'t go below 1.' },
+    { unless: { gte: [skillPoints, skillsCost] }, message: 'The skills cost more than the skill points (each skill costs its rating).' },
   ],
 };
