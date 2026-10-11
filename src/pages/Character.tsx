@@ -169,7 +169,8 @@ export default function Character({ user }: { user: any }) {
   // Monsters and NPCs can have their stress and consequences set by hand, which goes
   // under the stress tracks too (and the layout's own fields for it are hidden).
   const toughness = (access?.itemType === 'monster' || access?.itemType === 'npc') && hasToughness(layout);
-  // The skill points and what the skills cost share a line, the latter in red when it's more.
+  // The skill points and what the skills cost share a line, laid out like the skills'
+  // (so the input lines up with their dropdowns), the cost in red when it's more.
   const skillsSpent = layout.rows.flatMap(row => row.sections.flatMap(section => section.fields))
     .find((field): field is ComputedField => field.widget === 'computed' && field.label === SKILLS_SPENT_LABEL);
 
@@ -238,9 +239,9 @@ export default function Character({ user }: { user: any }) {
         if (field.widget === 'number' && field.path === SKILL_POINTS_PATH && skillsSpent) {
           const points = numberValue(field, data) || (field.default ? evaluate(field.default, data) : 0);
           const spent = evaluate(skillsSpent.value, data);
-          return <div className='d-flex align-center gap-3 flex-wrap'>
-            <label htmlFor={id} className='d-flex align-center gap-1'>
-              {field.label}
+          return <div className='tab-layout-line'>
+            <label htmlFor={id} className='tab-layout-rating'>{field.label}</label>
+            <div className='tab-layout-chips align-center'>
               <input
                 id={id}
                 type='number'
@@ -250,8 +251,8 @@ export default function Character({ user }: { user: any }) {
                 value={numberValue(field, data)}
                 onChange={({ target }) => set(field.path, target.value === '' ? null : Number(target.value))}
               />
-            </label>
-            <span className={spent > points ? 'color-error' : undefined}>Spent <b>{spent}</b></span>
+              <span className={spent > points ? 'color-error' : undefined} style={{ marginLeft: '0.5rem' }}>Spent <b>{spent}</b></span>
+            </div>
           </div>;
         }
         if (field === lastTrack && (canEdit || toughness)) return <>
