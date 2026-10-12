@@ -1,4 +1,4 @@
-import { ladderRatings, numberValue, type NumberField, type RatingLadderField, type LayoutField } from '../layout/core';
+import { evaluate, ladderRatings, numberValue, type ComputedField, type NumberField, type RatingLadderField, type LayoutField } from '../layout/core';
 import { FATE_CORE_LAYOUT } from './coreLayout';
 
 // Fate dice rolls, shared in a scene's live doc (the `rolls` map) so everyone at the
@@ -85,3 +85,6 @@ export const skillRatings = (sheet: unknown): { [skill: string]: number } => lad
 
 // Fate points on a sheet; a sheet that never set them has its refresh.
 export const fatePoints = (sheet: unknown): number => numberValue(fatePointsField, sheet);
+
+const refreshField = coreFields.find((f): f is ComputedField => f.widget === 'computed' && f.label === 'Refresh')!;
+export const refresh = (sheet: unknown): number => evaluate(refreshField.value, sheet);

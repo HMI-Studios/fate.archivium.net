@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { diceTotal, FATE_SKILLS, isBonus, ladderLabel, paidInvokeUsed, rollTotal, signed, type FateDie, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
 import { teamworkBonus } from '../fate/mobs';
+import type { Compel } from '../fate/compels';
 import type { SceneCharacter } from './AspectsPanel';
 import SideDrawer from './SideDrawer';
 
@@ -23,6 +24,12 @@ interface Props {
   // By actor key (SceneCharacter.key).
   skills: { [key: string]: { [skill: string]: number } };
   fatePoints: { [key: string]: number };
+  // Characters who invoke with the GM's fate points (NPCs and monsters), by key, and
+  // how many the GM has. Rolls for no character are the GM's too.
+  pooled: string[];
+  gmFatePoints: number;
+  // Compels, shown in the log among the rolls (newest first).
+  compels: Compel[];
   aspects: InvokableAspect[];
   canRoll: boolean;
   onRoll: (roll: Pick<Roll, 'character' | 'skill' | 'skillRating' | 'modifier' | 'teamwork'>) => void;
@@ -64,10 +71,12 @@ function groupByOwner(aspects: InvokableAspect[]): [string, InvokableAspect[]][]
   return [...groups].sort(([a], [b]) => Number(b === SCENE_OWNER) - Number(a === SCENE_OWNER));
 }
 
-function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
+function RollEntry({ roll, aspects, fatePoints, pooled, canInvoke, onInvoke }: {
   roll: Roll,
   aspects: InvokableAspect[],
   fatePoints: number | undefined,
+  // Whether it's paid for from the GM's fate points.
+  pooled: boolean,
   canInvoke: boolean,
   onInvoke: (aspectId: string, effect: InvokeEffect) => void,
 }) {
@@ -85,9 +94,8 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
   const replaced = roll.invokes.filter(i => i.previousDice);
 
   const pickAspect = aspects.find(a => a.id === pick);
-  // Whether whoever rolled is out of fate points (unknown until their sheet loads, and
-  // for rolls not made for a character).
-  const broke = Boolean(roll.character) && fatePoints !== undefined && fatePoints <= 0;
+  // Whether whoever pays for invokes is out of fate points (unknown until their sheet loads).
+  const broke = fatePoints !== undefined && fatePoints <= 0;
   // An aspect already paid for on this roll can only be invoked again with a free invoke.
   const spent = (a: InvokableAspect) => a.freeInvokes === 0 && paidInvokeUsed(roll, a);
   const unavailable = (a: InvokableAspect) => spent(a) || (a.freeInvokes === 0 && broke);
@@ -134,7 +142,7 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
               </optgroup>
             ))}
           </select>
-          {broke && <small style={{ opacity: 0.8 }}>{who} has no fate points left, so only free invokes can be used.</small>}
+          {broke && <small style={{ opacity: 0.8 }}>{pooled ? 'The GM has' : `${who} has`} no fate points left, so only free invokes can be used.</small>}
           <div className='d-flex gap-1 flex-wrap'>
             <button disabled={!pickAspect || unavailable(pickAspect)} onClick={() => invoke('bonus')}>+2</button>
             <button disabled={!pickAspect || unavailable(pickAspect)} onClick={() => invoke('reroll')}>Reroll</button>
@@ -146,7 +154,24 @@ function RollEntry({ roll, aspects, fatePoints, canInvoke, onInvoke }: {
   );
 }
 
-export default function DiceRoller({ rolls, characters, own, skills, fatePoints, aspects, canRoll, onRoll, onInvoke, journal, onOpenChange }: Props) {
+const COMPEL_RESULTS: { [status in Compel['status']]: string } = {
+  pending: 'waiting for an answer',
+  accepted: 'accepted (+1 fate point)',
+  refused: 'refused (−1 fate point)',
+  cancelled: 'cancelled',
+};
+
+function CompelEntry({ compel }: { compel: Compel }) {
+  return (
+    <li className='d-flex flex-col gap-1' style={{ borderTop: '1px solid var(--tab-border-color, rgba(128, 128, 128, 0.3))', paddingTop: 6 }}>
+      <small><b>{compel.character.title}</b> · compel{compel.by && <span style={{ opacity: 0.7 }}> (by {compel.by})</span>}</small>
+      <div><i>{compel.aspect}</i>{compel.complication && <span>: {compel.complication}</span>}</div>
+      <small style={{ opacity: 0.8 }}>{COMPEL_RESULTS[compel.status]}</small>
+    </li>
+  );
+}
+
+export default function DiceRoller({ rolls, characters, own, skills, fatePoints, pooled, gmFatePoints, compels, aspects, canRoll, onRoll, onInvoke, journal, onOpenChange }: Props) {
   // Who the viewer picked to roll for ('' for no one), or null until they pick.
   const [picked, setPicked] = useState<string | null>(null);
   const character = picked ?? (own && characters.some(c => c.key === own) ? own : '');
@@ -159,9 +184,14 @@ export default function DiceRoller({ rolls, characters, own, skills, fatePoints,
   const [open, setOpen] = useState(true);
   const showingDice = open && tab === 'dice';
   const seenUntil = useRef(0);
-  const newest = rolls[0]?.at ?? 0;
+  // Rolls and compels, newest first.
+  const log = [
+    ...rolls.map(roll => ({ at: roll.at, roll, compel: undefined })),
+    ...compels.map(compel => ({ at: compel.at, roll: undefined, compel })),
+  ].sort((a, b) => b.at - a.at);
+  const newest = log[0]?.at ?? 0;
   if (showingDice && newest > seenUntil.current) seenUntil.current = newest;
-  const unseen = showingDice ? 0 : rolls.filter(r => r.at > seenUntil.current).length;
+  const unseen = showingDice ? 0 : log.filter(entry => entry.at > seenUntil.current).length;
 
   const chosen = characters.find(c => c.key === character);
   const ratings = chosen ? skills[chosen.key] ?? {} : {};
@@ -195,7 +225,7 @@ export default function DiceRoller({ rolls, characters, own, skills, fatePoints,
                 <option value=''>No character</option>
                 {characters.map(c => (
                   <option key={c.key} value={c.key}>
-                    {c.title}{fatePoints[c.key] !== undefined && ` (${fatePoints[c.key]} FP)`}
+                    {c.title}{!pooled.includes(c.key) && fatePoints[c.key] !== undefined && ` (${fatePoints[c.key]} FP)`}
                   </option>
                 ))}
               </select>
@@ -220,18 +250,22 @@ export default function DiceRoller({ rolls, characters, own, skills, fatePoints,
             </small>}
           </form>
         )}
-        {rolls.length === 0 && <small>No rolls yet.</small>}
+        {log.length === 0 && <small>No rolls yet.</small>}
         <ul className='ma-0 pa-0 d-flex flex-col gap-1' style={{ listStyle: 'none' }}>
-          {rolls.map(r => (
-            <RollEntry
-              key={r.id}
-              roll={r}
+          {log.map(({ roll: r, compel }) => {
+            if (compel) return <CompelEntry key={compel.id} compel={compel} />;
+            const key = r!.character ? r!.character.key ?? r!.character.shortname : null;
+            const fromPool = key === null || pooled.includes(key);
+            return <RollEntry
+              key={r!.id}
+              roll={r!}
               aspects={aspects}
-              fatePoints={r.character ? fatePoints[r.character.key ?? r.character.shortname] : undefined}
+              fatePoints={fromPool ? gmFatePoints : fatePoints[key]}
+              pooled={fromPool}
               canInvoke={canRoll}
-              onInvoke={(aspectId, effect) => onInvoke(r.id, aspectId, effect)}
-            />
-          ))}
+              onInvoke={(aspectId, effect) => onInvoke(r!.id, aspectId, effect)}
+            />;
+          })}
         </ul>
       </div>}
     </SideDrawer>

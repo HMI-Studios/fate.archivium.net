@@ -9,7 +9,8 @@ import { isMobId, MOB_COLORS, newMobId, type MobHitStep } from '../fate/mobs';
 import { fetchSettings, type TurnOrderMode } from '../fate/settings';
 import { useTable } from '../fate/table';
 import { FATE_CORE_LAYOUT } from '../fate/coreLayout';
-import { fatePoints, paidInvokeUsed, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
+import { fatePoints, paidInvokeUsed, refresh, rollFateDice, ROLL_LOG_SIZE, skillRatings, type InvokeEffect, type Roll, type RollInvoke } from '../fate/dice';
+import { COMPEL_LOG_SIZE, newCompelId, type Compel } from '../fate/compels';
 import { galleryImageUrl, portraitId, useCanvasImage } from '../fate/portrait';
 import { glass, GLASS, hasBackdrop, useBackdrop, usePremiumCampaign, useTheme } from '../theme';
 import { FATE_SCENE_LAYOUT } from '../fate/sceneLayout';
@@ -25,6 +26,8 @@ import CombatTracker, { type CombatEntry } from './CombatTracker';
 import type { Hit } from './TakeHitDialog';
 import DiceRoller, { SCENE_OWNER, type InvokableAspect } from './DiceRoller';
 import Journal from './Journal';
+import GmScreen, { type GmScreenCharacter } from './GmScreen';
+import CompelDialog from './CompelDialog';
 import { FullScreen, MenuButton, panelStyle, TOPBAR_HEIGHT, TopBar } from './PlayLayout';
 import SideDrawer, { DRAWER_WIDTH } from './SideDrawer';
 import PersonalNotes from './PersonalNotes';
@@ -439,6 +442,12 @@ function AspectPinLabel({ aspect, x, y, movable, onMoved, onGrab }: {
 // the scene item remembers this flag until a new image is uploaded.
 const MAP_IMAGE_HIDDEN_KEY = 'mapImageHidden';
 
+// The GM's fate points for the scene: in the live doc's `gmPool` map (key `fatePoints`),
+// saved on the scene item. Neither is there until the GM spends or changes them.
+const GM_POOL_KEY = 'gmPool';
+const GM_FATE_POINTS_KEY = 'gmFatePoints';
+const PC_TYPE = 'pc';
+
 // Where the scene item keeps its room backdrop (SceneMeta.backdrop).
 const BACKDROP_KEY = 'roomBackdrop';
 
@@ -507,6 +516,18 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const [sheets, setSheets] = useState<{ [shortname: string]: Record<string, unknown> }>({});
   // Who has claimed each character on the board, by shortname (see fate/vaults.ts).
   const [claimedBy, setClaimedBy] = useState<{ [shortname: string]: number | null }>({});
+  // And their usernames, for the GM screen.
+  const [claimNames, setClaimNames] = useState<{ [shortname: string]: string | null }>({});
+  // The GM's fate points for the scene, once the GM has spent or changed them (key
+  // `fatePoints`); until then, one per PC in the scene.
+  const [liveGmPool, setLiveGmPool] = useState<number | null>(null);
+  const [savedGmPool, setSavedGmPool] = useState<number | null>(null);
+  const [gmScreenOpen, setGmScreenOpen] = useState(() => {
+    try { return localStorage.getItem('fate.gmScreenOpen') === 'true'; } catch { return false; }
+  });
+  // Compels the viewer has put off answering for now, and whether an answer is being saved.
+  const [putOffCompels, setPutOffCompels] = useState<string[]>([]);
+  const [answeringCompel, setAnsweringCompel] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // A selection box being dragged out, in map coordinates.
@@ -584,6 +605,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // Whether the fog is on (key `enabled`), and its strokes by id.
   const yFog = ydoc?.getMap<boolean>(FOG_KEY);
   const yFogStrokes = ydoc?.getMap<FogStroke>('fogStrokes');
+  const yGmPool = ydoc?.getMap<number>(GM_POOL_KEY);
+  const yCompels = table.writableCompels;
 
   useEffect(() => {
     fetchSettings(campaignShortname).then(settings => setTurnOrder(settings.turnOrder)).catch(() => {});
@@ -623,18 +646,20 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       setSavedCombat(objData?.combat ?? null);
       setSavedTokenStates(objData?.[TOKEN_STATES_KEY] ?? {});
       setSavedFog(asFog(objData?.[FOG_KEY]));
+      setSavedGmPool(typeof objData?.[GM_FATE_POINTS_KEY] === 'number' ? objData[GM_FATE_POINTS_KEY] : null);
       setSavedShapes(objData?.mapData ?? []);
     });
   }, [campaignShortname, sceneShortname]);
 
   useEffect(() => {
-    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || !yFog || !yFogStrokes) return;
+    if (!ydoc || !provider || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || !yFog || !yFogStrokes || !yGmPool) return;
 
     const updateShapes = () => setLiveShapes(Array.from(yShapes.values()));
     const updateAspects = () => setLiveAspects(Array.from(yAspects.values()));
     const updateCombat = () => setLiveCombat(yCombat.get('state') ?? null);
     const updateTokenStates = () => setLiveTokenStates(Object.fromEntries(yTokenStates.entries()));
     const updateFog = () => setLiveFog({ enabled: Boolean(yFog.get('enabled')), strokes: Array.from(yFogStrokes.values()) });
+    const updateGmPool = () => setLiveGmPool(yGmPool.get('fatePoints') ?? null);
     const updateMeta = () => {
       if (!yMeta.has('width')) return;
       setMeta(m => ({
@@ -653,12 +678,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     yTokenStates.observe(updateTokenStates);
     yFog.observe(updateFog);
     yFogStrokes.observe(updateFog);
+    yGmPool.observe(updateGmPool);
     updateShapes();
     updateMeta();
     updateAspects();
     updateCombat();
     updateTokenStates();
     updateFog();
+    updateGmPool();
 
     // Persist our own edits; updates that arrive from the server were saved by
     // whoever made them. The data endpoint merges into obj_data, so this leaves
@@ -677,6 +704,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
             [MAP_AREA_KEY]: { width: yMeta.get('width'), height: yMeta.get('height'), imageRect: yMeta.get('imageRect') ?? null },
           } : {}),
           ...(yMeta.has('backdrop') ? { [BACKDROP_KEY]: yMeta.get('backdrop') ?? null } : {}),
+          [GM_FATE_POINTS_KEY]: yGmPool.get('fatePoints') ?? null,
         };
         try {
           await updateLayoutTab(
@@ -710,6 +738,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       yTokenStates.unobserve(updateTokenStates);
       yFog.unobserve(updateFog);
       yFogStrokes.unobserve(updateFog);
+      yGmPool.unobserve(updateGmPool);
       ydoc.off('update', onUpdate);
     };
   }, [ydoc]);
@@ -718,13 +747,14 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   // server last started. Shapes are keyed by id, so two clients seeding at once
   // converge instead of duplicating.
   useEffect(() => {
-    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || !yFog || !yFogStrokes || savedShapes === null || seeded.current) return;
+    if (!canEdit || !ydoc || !yShapes || !yMeta || !yAspects || !yCombat || !yTokenStates || !yFog || !yFogStrokes || !yGmPool || savedShapes === null || seeded.current) return;
     seeded.current = true;
     ydoc.transact(() => {
       if (yShapes.size === 0) savedShapes.forEach(shape => yShapes.set(shape.id, shape));
       if (yAspects.size === 0) savedAspects.forEach(aspect => yAspects.set(aspect.id, aspect));
       if (!yCombat.has('state') && savedCombat) yCombat.set('state', savedCombat);
       if (yTokenStates.size === 0) Object.entries(savedTokenStates).forEach(([id, state]) => yTokenStates.set(id, state));
+      if (!yGmPool.has('fatePoints') && savedGmPool !== null) yGmPool.set('fatePoints', savedGmPool);
       if (!yFog.has('enabled')) {
         yFog.set('enabled', savedFog.enabled);
         if (yFogStrokes.size === 0) savedFog.strokes.forEach(stroke => yFogStrokes.set(stroke.id, stroke));
@@ -805,6 +835,16 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     : allTokens;
   const hiddenTokenIds = new Set(allTokens.filter(t => !tokens.includes(t)).map(t => t.id));
   const isMonster = (token: TokenShape) => (token.itemType ?? tokenCandidates.find(c => c.shortname === token.itemShortname)?.item_type) === MONSTER_TYPE;
+  // Whether a character is a player's (so pays for invokes from their own sheet).
+  const isPc = (shortname: string) => (allTokens.find(t => t.itemShortname === shortname)?.itemType
+    ?? tokenCandidates.find(c => c.shortname === shortname)?.item_type) === PC_TYPE;
+  // The GM's fate points: one per PC in the scene to start with (Fate Core).
+  const startingGmFatePoints = new Set(allTokens.filter(t => isPc(t.itemShortname)).map(t => t.itemShortname)).size;
+  const gmFatePoints = (showLive ? liveGmPool : savedGmPool) ?? startingGmFatePoints;
+  const adjustGmPool = (delta: number) => {
+    if (!canEdit || !yGmPool) return;
+    yGmPool.set('fatePoints', Math.max(0, (yGmPool.get('fatePoints') ?? startingGmFatePoints) + delta));
+  };
   // A token's own name if it's been given one; otherwise several tokens of one character
   // are numbered, e.g. "Goblin 2" (counting named ones, so naming one renumbers no others).
   const tokenLabel = (token: TokenShape) => {
@@ -1205,6 +1245,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         .then(objData => {
           setSheets(current => ({ ...current, [shortname]: layoutTabData(objData, SHEET_TAB) }));
           setClaimedBy(current => ({ ...current, [shortname]: claimOf(objData)?.id ?? null }));
+          setClaimNames(current => ({ ...current, [shortname]: claimOf(objData)?.username ?? null }));
         })
         .catch(() => {});
     });
@@ -1342,12 +1383,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       const sceneAspect = aspects.find(a => a.id === aspectId);
       if (sceneAspect?.kind === 'boost' && sceneAspect.freeInvokes <= 1) removeAspect(aspectId);
       else updateAspect(aspectId, { freeInvokes: aspect.freeInvokes - 1 });
-    } else if (roll.character && tokenIdOfActor(roll.character.key)) {
-      // A monster token pays from its own fate points.
-      const current = fatePoints(actorSheet(roll.character.key!));
-      if (current <= 0) return;
-      setTokenState(tokenIdOfActor(roll.character.key)!, state => ({ ...state, fatePoints: current - 1 }));
-    } else if (roll.character) {
+    } else if (!roll.character || tokenIdOfActor(roll.character.key) || !isPc(roll.character.shortname)) {
+      // NPCs and monsters (and rolls for no one, which are the GM's) pay from the GM's
+      // fate points.
+      const current = yGmPool?.get('fatePoints') ?? startingGmFatePoints;
+      if (!canEdit || !yGmPool || current <= 0) return;
+      yGmPool.set('fatePoints', current - 1);
+    } else {
       const shortname = roll.character.shortname;
       const current = fatePoints(sheets[shortname]);
       if (current <= 0) return;
@@ -1500,7 +1542,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
 
   const endScene = async () => {
     const kept = aspects.filter(a => a.kind === 'temporary' && a.target && !tokenIdOfActor(a.target));
-    if (!window.confirm("End the scene? Its situation aspects, advantages and boosts will be cleared, and monsters' and mobs' stress, consequences and fate points reset. Temporary aspects stay on character sheets.")) return;
+    if (!window.confirm("End the scene? Its situation aspects, advantages and boosts will be cleared, monsters' and mobs' stress and consequences reset, and your fate points go back to one per PC. Temporary aspects stay on character sheets.")) return;
     // A temporary aspect that couldn't be moved to its sheet stays in the scene.
     for (const aspect of kept) await keepOnSheet(aspect);
     const target = writableAspects();
@@ -1511,8 +1553,59 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       const out = Array.from(yTokenStates.entries()).filter(([, state]) => state.takenOut).map(([id]) => id);
       yTokenStates.clear();
       out.forEach(id => yTokenStates.set(id, { takenOut: true }));
+      yGmPool?.delete('fatePoints');
     });
   };
+
+  // Compels (fate/compels.ts): the GM sends them from the GM screen, and the player
+  // who has claimed the character answers.
+  const sendCompel = (character: GmScreenCharacter, aspect: string, complication: string) => {
+    if (!gm || !yCompels) return;
+    const at = Date.now();
+    const compel: Compel = {
+      id: newCompelId(at), at, by: userName,
+      character: { shortname: character.shortname, title: character.title },
+      aspect, ...(complication ? { complication } : {}),
+      status: 'pending',
+    };
+    yCompels.doc!.transact(() => {
+      yCompels.set(compel.id, compel);
+      Array.from(yCompels.values()).sort((a, b) => b.at - a.at).slice(COMPEL_LOG_SIZE).forEach(c => yCompels.delete(c.id));
+    });
+  };
+  const cancelCompel = (id: string) => {
+    const compel = yCompels?.get(id);
+    if (gm && compel?.status === 'pending') yCompels!.set(id, { ...compel, status: 'cancelled', answeredBy: userName, answeredAt: Date.now() });
+  };
+  // The viewer's own compels waiting on an answer, oldest first.
+  const myCompels = userId === undefined ? [] : table.compels
+    .filter(c => c.status === 'pending' && claimedBy[c.character.shortname] === userId).reverse();
+  const shownCompel = myCompels.find(c => !putOffCompels.includes(c.id));
+  // Accepting takes a fate point, refusing pays one, saved to the freshest copy of the sheet.
+  const answerCompel = async (compel: Compel, accept: boolean) => {
+    const shortname = compel.character.shortname;
+    const current = fatePoints(sheets[shortname]);
+    if (!yCompels || yCompels.get(compel.id)?.status !== 'pending' || (!accept && current <= 0)) return;
+    const delta = accept ? 1 : -1;
+    setAnsweringCompel(true);
+    setSheetKey(shortname, 'fatePoints', current + delta);
+    try {
+      const saved = await updateSheetKey<number>(campaignShortname, shortname, SHEET_TAB, 'fatePoints', fresh => Math.max(0, (typeof fresh === 'number' ? fresh : current) + delta));
+      setSheetKey(shortname, 'fatePoints', saved);
+      ySheetStamps?.set(shortname, Date.now());
+      const latest = yCompels.get(compel.id) ?? compel;
+      yCompels.set(compel.id, { ...latest, status: accept ? 'accepted' : 'refused', answeredBy: userName, answeredAt: Date.now() });
+    } catch {
+      window.alert(`Couldn't change ${compel.character.title}'s fate points.`);
+      loadSheets([shortname]);
+    } finally {
+      setAnsweringCompel(false);
+    }
+  };
+  const toggleGmScreen = () => setGmScreenOpen(open => {
+    try { localStorage.setItem('fate.gmScreenOpen', String(!open)); } catch { /* not remembered */ }
+    return !open;
+  });
 
   const writableShapes = (): Y.Map<Shape> | null => (canEdit && yShapes) ? yShapes : null;
 
@@ -2343,6 +2436,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       <TopBar
         left={header}
         right={<>
+          {gm && <button onClick={toggleGmScreen} aria-pressed={gmScreenOpen} title="Your fate points, and the players' characters in this scene">GM screen</button>}
+          {myCompels.length > 0 && !shownCompel && <button onClick={() => setPutOffCompels([])} title='Answer the compel on your character'><b>Compel waiting</b></button>}
           {headerEnd}
           {status && <small title={status} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{status}</small>}
         </>}
@@ -2570,6 +2665,42 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         </div>
       </div>
 
+      {gm && gmScreenOpen && <div style={{ position: 'absolute', top: `calc(${TOPBAR_HEIGHT} + 0.5rem)`, right: between.right, zIndex: 16 }}>
+        <GmScreen
+          gmFatePoints={gmFatePoints}
+          startingFatePoints={startingGmFatePoints}
+          onAdjustPool={canEdit ? adjustGmPool : undefined}
+          characters={characters.filter(c => !c.scoped && isPc(c.shortname)).map(c => {
+            const sheet = sheets[c.shortname];
+            return {
+              shortname: c.shortname,
+              title: c.title,
+              player: claimNames[c.shortname] ?? null,
+              fatePoints: fatePoints(sheet),
+              refresh: refresh(sheet),
+              stress: stressTracks(sheet),
+              consequences: takenConsequences(sheet),
+              aspects: [...new Set([...mainAspects(sheet).map(a => a.text), ...(sheetAspects[c.shortname] ?? []).map(a => a.name ?? '')].filter(Boolean))],
+            };
+          })}
+          sceneAspects={[...new Set(aspects.filter(a => !a.target).map(a => a.name))]}
+          compels={table.compels}
+          canCompel={Boolean(yCompels)}
+          onCompel={sendCompel}
+          onCancelCompel={cancelCompel}
+          onClose={toggleGmScreen}
+        />
+      </div>}
+
+      {shownCompel && <CompelDialog
+        key={shownCompel.id}
+        compel={shownCompel}
+        fatePoints={sheets[shownCompel.character.shortname] ? fatePoints(sheets[shownCompel.character.shortname]) : undefined}
+        busy={answeringCompel}
+        onAnswer={accept => answerCompel(shownCompel, accept)}
+        onLater={() => setPutOffCompels(ids => [...ids, shownCompel.id])}
+      />}
+
       {/* Zoom sits in the map's bottom-right corner, between the drawers. */}
       <div className='d-flex flex-col align-center gap-1' style={{ ...panelStyle, position: 'absolute', bottom: '0.75rem', right: between.right, zIndex: between.zIndex, padding: '0.35rem' }}>
         <button onClick={() => zoomAtCenter(1.25)} aria-label='Zoom in' style={{ width: '2.2rem' }}>+</button>
@@ -2751,6 +2882,9 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         own={characters.find(c => !c.scoped && userId !== undefined && claimedBy[c.shortname] === userId)?.key}
         skills={Object.fromEntries(characters.map(c => [c.key, skillRatings(actorSheet(c.key))]))}
         fatePoints={Object.fromEntries(characters.filter(c => actorSheet(c.key)).map(c => [c.key, fatePoints(actorSheet(c.key))]))}
+        pooled={characters.filter(c => c.scoped || !isPc(c.shortname)).map(c => c.key)}
+        gmFatePoints={gmFatePoints}
+        compels={table.compels.slice(0, 20)}
         aspects={invokableAspects}
         canRoll={Boolean(yRolls)}
         onRoll={addRoll}
