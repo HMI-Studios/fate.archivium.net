@@ -525,9 +525,10 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const [gmScreenOpen, setGmScreenOpen] = useState(() => {
     try { return localStorage.getItem('fate.gmScreenOpen') === 'true'; } catch { return false; }
   });
-  // Compels the viewer has put off answering for now, and whether an answer is being saved.
+  // Compels the viewer has put off answering for now, and those they've answered (which
+  // go away at once, while the answer is saved).
   const [putOffCompels, setPutOffCompels] = useState<string[]>([]);
-  const [answeringCompel, setAnsweringCompel] = useState(false);
+  const [answeredCompels, setAnsweredCompels] = useState<string[]>([]);
   const [drawing, setDrawing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // A selection box being dragged out, in map coordinates.
@@ -1579,7 +1580,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   };
   // The viewer's own compels waiting on an answer, oldest first.
   const myCompels = userId === undefined ? [] : table.compels
-    .filter(c => c.status === 'pending' && claimedBy[c.character.shortname] === userId).reverse();
+    .filter(c => c.status === 'pending' && claimedBy[c.character.shortname] === userId && !answeredCompels.includes(c.id)).reverse();
   const shownCompel = myCompels.find(c => !putOffCompels.includes(c.id));
   // Accepting takes a fate point, refusing pays one, saved to the freshest copy of the sheet.
   const answerCompel = async (compel: Compel, accept: boolean) => {
@@ -1587,7 +1588,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const current = fatePoints(sheets[shortname]);
     if (!yCompels || yCompels.get(compel.id)?.status !== 'pending' || (!accept && current <= 0)) return;
     const delta = accept ? 1 : -1;
-    setAnsweringCompel(true);
+    setAnsweredCompels(ids => [...ids, compel.id]);
     setSheetKey(shortname, 'fatePoints', current + delta);
     try {
       const saved = await updateSheetKey<number>(campaignShortname, shortname, SHEET_TAB, 'fatePoints', fresh => Math.max(0, (typeof fresh === 'number' ? fresh : current) + delta));
@@ -1598,8 +1599,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     } catch {
       window.alert(`Couldn't change ${compel.character.title}'s fate points.`);
       loadSheets([shortname]);
-    } finally {
-      setAnsweringCompel(false);
+      // So it can be answered again.
+      setAnsweredCompels(ids => ids.filter(id => id !== compel.id));
     }
   };
   const toggleGmScreen = () => setGmScreenOpen(open => {
@@ -2696,7 +2697,6 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         key={shownCompel.id}
         compel={shownCompel}
         fatePoints={sheets[shownCompel.character.shortname] ? fatePoints(sheets[shownCompel.character.shortname]) : undefined}
-        busy={answeringCompel}
         onAnswer={accept => answerCompel(shownCompel, accept)}
         onLater={() => setPutOffCompels(ids => [...ids, shownCompel.id])}
       />}
