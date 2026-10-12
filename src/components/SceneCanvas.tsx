@@ -348,6 +348,20 @@ function shapeBounds(shape: Shape): MapRect | null {
   }
 }
 
+// Labels on a shape sit over the middle of it, or of its whole group.
+function labelAnchor(shapes: Shape[], shapeId: string): Point | null {
+  const shape = shapes.find(s => s.id === shapeId);
+  if (!shape || shape.type === 'token') return null;
+  const boxes = (shape.group ? shapes.filter(s => s.group === shape.group) : [shape])
+    .map(shapeBounds).filter((box): box is MapRect => Boolean(box));
+  if (!boxes.length) return null;
+  const left = Math.min(...boxes.map(b => b.x));
+  const top = Math.min(...boxes.map(b => b.y));
+  const right = Math.max(...boxes.map(b => b.x + b.width));
+  const bottom = Math.max(...boxes.map(b => b.y + b.height));
+  return { x: (left + right) / 2, y: (top + bottom) / 2 };
+}
+
 const TOKEN_RADIUS = 20;
 
 // A token's name sits on a nameplate under it: frosted-glass-ish (a canvas can't blur
@@ -848,10 +862,17 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   }
   // (All of them, fogged or not: who has claimed each tells which are the viewer's.)
   const sheetShortnames = [...new Set(allTokens.map(t => t.itemShortname))].sort().join(',');
-  // The scene's aspects players can see: not those on characters hidden by the fog.
+  // The scene's aspects players can see: not those on characters hidden by the fog, nor
+  // those whose label on the map is under it (aspects that aren't on the map show).
   const hiddenActors = new Set(allTokens.filter(t => hiddenTokenIds.has(t.id)).map(actorKeyOf)
     .filter(key => !characters.some(c => c.key === key)));
-  const shownAspects = hiddenActors.size ? aspects.filter(a => !a.target || !hiddenActors.has(a.target)) : aspects;
+  const labelFogged = (aspect: SceneAspect) => {
+    if (!fogHides || aspect.target) return false;
+    const at = aspect.pinnedTo ? labelAnchor(shapes, aspect.pinnedTo) : aspect.pin;
+    return Boolean(at && isFogged(fogStrokes, at));
+  };
+  const visibleAspects = aspects.filter(a => !(a.target && hiddenActors.has(a.target)) && !labelFogged(a));
+  const shownAspects = visibleAspects.length === aspects.length ? aspects : visibleAspects;
 
   // The sheet a token plays from: a monster token's own copy of its changing stats over
   // the monster's sheet, otherwise the character's shared sheet.
@@ -1371,26 +1392,13 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const { pin: _, pinnedTo: __, ...unpinned } = aspect;
     target.set(id, shapeId ? { ...unpinned, pinnedTo: shapeId } : unpinned);
   };
-  // Labels on a shape sit over the middle of it, or of its whole group.
-  const labelAnchor = (shapeId: string): Point | null => {
-    const shape = shapes.find(s => s.id === shapeId);
-    if (!shape || shape.type === 'token') return null;
-    const boxes = (shape.group ? shapes.filter(s => s.group === shape.group) : [shape])
-      .map(shapeBounds).filter((box): box is MapRect => Boolean(box));
-    if (!boxes.length) return null;
-    const left = Math.min(...boxes.map(b => b.x));
-    const top = Math.min(...boxes.map(b => b.y));
-    const right = Math.max(...boxes.map(b => b.x + b.width));
-    const bottom = Math.max(...boxes.map(b => b.y + b.height));
-    return { x: (left + right) / 2, y: (top + bottom) / 2 };
-  };
   // The scene's aspects on shapes, stacked over each shape (or group) they're on.
   const shapeLabels = (() => {
     const stacks = new Map<string, { shape: Shape, anchor: Point, aspects: SceneAspect[] }>();
     for (const aspect of shownAspects) {
       if (aspect.target || !aspect.pinnedTo) continue;
       const shape = shapes.find(s => s.id === aspect.pinnedTo);
-      const anchor = labelAnchor(aspect.pinnedTo);
+      const anchor = labelAnchor(shapes, aspect.pinnedTo);
       if (!shape || !anchor) continue;
       const key = shape.group ?? shape.id;
       if (!stacks.has(key)) stacks.set(key, { shape, anchor, aspects: [] });
@@ -2721,7 +2729,7 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
         <AspectsPanel
           campaignShortname={campaignShortname}
           // (A label on a shape that's gone isn't on the map.)
-          aspects={shownAspects.map(a => a.pinnedTo && !labelAnchor(a.pinnedTo) ? { ...a, pinnedTo: undefined } : a)}
+          aspects={shownAspects.map(a => a.pinnedTo && !labelAnchor(shapes, a.pinnedTo) ? { ...a, pinnedTo: undefined } : a)}
           characters={characters}
           sheetAspects={sheetAspects}
           consequences={consequenceAspects}
