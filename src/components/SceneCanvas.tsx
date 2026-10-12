@@ -322,6 +322,32 @@ function translateShape(shape: Shape, dx: number, dy: number): Shape {
   return { ...shape, x: shape.x + dx, y: shape.y + dy };
 }
 
+// A drawing's extent on the map, for the labels pinned to it (see SceneAspect.pinnedTo).
+// Tokens have their own aspect tags instead.
+let boundsContext: CanvasRenderingContext2D | null = null;
+function shapeBounds(shape: Shape): MapRect | null {
+  switch (shape.type) {
+    case 'rect':
+      return { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
+    case 'line': {
+      const xs = shape.points.filter((_, i) => i % 2 === 0).map(x => x + (shape.x ?? 0));
+      const ys = shape.points.filter((_, i) => i % 2 === 1).map(y => y + (shape.y ?? 0));
+      if (!xs.length) return null;
+      return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+    }
+    case 'text': {
+      // As Konva draws it: Arial, a line per line of text, no padding.
+      boundsContext ??= document.createElement('canvas').getContext('2d');
+      const lines = shape.text.split('\n');
+      if (boundsContext) boundsContext.font = `${shape.fontSize}px Arial`;
+      const width = Math.max(...lines.map(line => boundsContext ? boundsContext.measureText(line).width : line.length * shape.fontSize * 0.5));
+      return { x: shape.x, y: shape.y, width, height: lines.length * shape.fontSize };
+    }
+    case 'token':
+      return null;
+  }
+}
+
 const TOKEN_RADIUS = 20;
 
 // A token's name sits on a nameplate under it: frosted-glass-ish (a canvas can't blur
@@ -363,21 +389,32 @@ function pinTextWidth(text: string): number {
   return Math.ceil(pinMeasuringContext.measureText(text).width) + 1;
 }
 
-function AspectPinLabel({ aspect, movable, onMoved }: { aspect: SceneAspect, movable: boolean, onMoved: (x: number, y: number) => void }) {
+const PIN_HEIGHT = PIN_FONT_SIZE + 2 * PIN_PADDING;
+// Between the labels stacked on a shape.
+const PIN_GAP = 4;
+
+function AspectPinLabel({ aspect, x, y, movable, onMoved, onGrab }: {
+  aspect: SceneAspect,
+  x: number,
+  y: number,
+  movable: boolean,
+  onMoved?: (x: number, y: number) => void,
+  // For a label on a shape: grabbing the label grabs the shape instead.
+  onGrab?: () => void,
+}) {
   const text = aspect.freeInvokes > 0 ? `${aspect.name} ${'●'.repeat(aspect.freeInvokes)}` : aspect.name;
   const width = pinTextWidth(text) + 2 * PIN_PADDING;
-  const height = PIN_FONT_SIZE + 2 * PIN_PADDING;
   return <Label
-    x={aspect.pin!.x}
-    y={aspect.pin!.y}
+    x={x}
+    y={y}
     offsetX={width / 2}
-    offsetY={height / 2}
-    draggable={movable}
+    offsetY={PIN_HEIGHT / 2}
+    draggable={movable && !onGrab}
     listening={movable}
-    onDragEnd={e => onMoved(e.target.x(), e.target.y())}
+    onDragEnd={e => onMoved?.(e.target.x(), e.target.y())}
     // Dragging it isn't panning the map.
-    onMouseDown={e => { e.cancelBubble = true; }}
-    onTouchStart={e => { e.cancelBubble = true; }}
+    onMouseDown={e => { e.cancelBubble = true; onGrab?.(); }}
+    onTouchStart={e => { e.cancelBubble = true; onGrab?.(); }}
   >
     <Tag fill='#fffbe6' stroke='#8a7a3a' strokeWidth={1} cornerRadius={4} />
     <Text text={text} fontStyle='italic' fontSize={PIN_FONT_SIZE} padding={PIN_PADDING} fill='#222' />
@@ -1322,9 +1359,55 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
     const target = gm ? writableAspects() : null;
     const aspect = target?.get(id);
     if (!target || !aspect) return;
-    const { pin: _, ...unpinned } = aspect;
+    const { pin: _, pinnedTo: __, ...unpinned } = aspect;
     const { x, y } = viewCenter();
-    target.set(id, pinned ? { ...aspect, pin: { x: Math.round(x), y: Math.round(y) } } : unpinned);
+    target.set(id, pinned ? { ...unpinned, pin: { x: Math.round(x), y: Math.round(y) } } : unpinned);
+  };
+  // Pins an aspect's label to a shape instead (or takes it off), to move along with it.
+  const pinToShape = (id: string, shapeId: string | null) => {
+    const target = gm ? writableAspects() : null;
+    const aspect = target?.get(id);
+    if (!target || !aspect) return;
+    const { pin: _, pinnedTo: __, ...unpinned } = aspect;
+    target.set(id, shapeId ? { ...unpinned, pinnedTo: shapeId } : unpinned);
+  };
+  // Labels on a shape sit over the middle of it, or of its whole group.
+  const labelAnchor = (shapeId: string): Point | null => {
+    const shape = shapes.find(s => s.id === shapeId);
+    if (!shape || shape.type === 'token') return null;
+    const boxes = (shape.group ? shapes.filter(s => s.group === shape.group) : [shape])
+      .map(shapeBounds).filter((box): box is MapRect => Boolean(box));
+    if (!boxes.length) return null;
+    const left = Math.min(...boxes.map(b => b.x));
+    const top = Math.min(...boxes.map(b => b.y));
+    const right = Math.max(...boxes.map(b => b.x + b.width));
+    const bottom = Math.max(...boxes.map(b => b.y + b.height));
+    return { x: (left + right) / 2, y: (top + bottom) / 2 };
+  };
+  // The scene's aspects on shapes, stacked over each shape (or group) they're on.
+  const shapeLabels = (() => {
+    const stacks = new Map<string, { shape: Shape, anchor: Point, aspects: SceneAspect[] }>();
+    for (const aspect of shownAspects) {
+      if (aspect.target || !aspect.pinnedTo) continue;
+      const shape = shapes.find(s => s.id === aspect.pinnedTo);
+      const anchor = labelAnchor(aspect.pinnedTo);
+      if (!shape || !anchor) continue;
+      const key = shape.group ?? shape.id;
+      if (!stacks.has(key)) stacks.set(key, { shape, anchor, aspects: [] });
+      stacks.get(key)!.aspects.push(aspect);
+    }
+    return [...stacks.values()].flatMap(({ shape, anchor, aspects: stack }) => stack.map((aspect, i) => ({
+      aspect,
+      shape,
+      x: anchor.x,
+      y: anchor.y + (i - (stack.length - 1) / 2) * (PIN_HEIGHT + PIN_GAP),
+    })));
+  })();
+  // Grabbing a shape's label grabs the shape, so the label doesn't get in the way of moving it.
+  const grabShape = (shape: Shape) => {
+    const node = stageRef.current?.findOne(`#${shape.id}`);
+    if (node?.draggable()) node.startDrag();
+    else setSelectedIds(withGroups([shape.id]));
   };
   const movePin = (id: string, x: number, y: number) => {
     const target = gm ? writableAspects() : null;
@@ -1896,6 +1979,12 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
   const selectedGroups = new Set(selectedShapes.map(shape => shape.group).filter(Boolean));
   const canGroup = canEdit && selectedShapes.length >= 2 && !(selectedGroups.size === 1 && selectedShapes.every(shape => shape.group));
   const canUngroup = canEdit && selectedGroups.size > 0;
+  // A drawing the GM has selected (or a group of them) can carry the scene's aspects as
+  // labels, which move along with it.
+  const labelShape = gm && canEdit && selectedShapes.length > 0 && selectedShapes.every(shape => shape.type !== 'token')
+    && (selectedShapes.length === 1 || (selectedGroups.size === 1 && selectedShapes.every(shape => shape.group)))
+    ? selectedShapes[0] : undefined;
+  const labelShapeIds = new Set(labelShape?.group ? shapes.filter(shape => shape.group === labelShape.group).map(shape => shape.id) : labelShape ? [labelShape.id] : []);
   const setGroup = (group: string | null) => {
     const target = writableShapes();
     if (!target || !ydoc) return;
@@ -2313,8 +2402,11 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
                 over the fog instead (their own character's can be under it). */}
             {shapes.filter(s => s.type !== 'token').map(renderShape)}
             {/* Pinned scene aspects, over the drawings but under the tokens (and the fog). */}
-            {shownAspects.filter(a => !a.target && a.pin).map(a => (
-              <AspectPinLabel key={a.id} aspect={a} movable={gm && canEdit && activeTool === 'pan'} onMoved={(x, y) => movePin(a.id, x, y)} />
+            {shownAspects.filter(a => !a.target && a.pin && !a.pinnedTo).map(a => (
+              <AspectPinLabel key={a.id} aspect={a} x={a.pin!.x} y={a.pin!.y} movable={gm && canEdit && activeTool === 'pan'} onMoved={(x, y) => movePin(a.id, x, y)} />
+            ))}
+            {shapeLabels.map(({ aspect, shape, x, y }) => (
+              <AspectPinLabel key={aspect.id} aspect={aspect} x={x} y={y} movable={gm && canMove && mayEdit(shape) && !shape.locked} onGrab={() => grabShape(shape)} />
             ))}
             {!fogHides && shapes.filter(s => s.type === 'token' && !hiddenTokenIds.has(s.id)).map(renderShape)}
             <Transformer
@@ -2516,6 +2608,20 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
               {close => <TokenPicker items={tokenCandidates} onPick={item => { addToken(item); close(); }} />}
             </MenuButton>
             <button onClick={addRect}>Rectangle</button>
+            {labelShape && <MenuButton label='Label' placement='above' title='Put the scene’s aspects on this as labels, which move along with it'>
+              {() => {
+                const sceneAspects = shownAspects.filter(a => !a.target);
+                return sceneAspects.length ? <div className='d-flex flex-col gap-1'>
+                  {sceneAspects.map(a => {
+                    const on = Boolean(a.pinnedTo && labelShapeIds.has(a.pinnedTo));
+                    return <label key={a.id} className='d-flex align-center gap-1'>
+                      <input type='checkbox' checked={on} onChange={() => pinToShape(a.id, on ? null : labelShape.id)} />
+                      {a.name}
+                    </label>;
+                  })}
+                </div> : <small>The scene has no aspects yet: add them in the Aspects drawer.</small>;
+              }}
+            </MenuButton>}
             {canGroup && <button onClick={groupSelection} title='Group these so they select and move together (Ctrl+G)'>Group</button>}
             {canUngroup && <button onClick={ungroupSelection} title='Ungroup (Ctrl+Shift+G)'>Ungroup</button>}
             {selectedShapes.length === 1 && selectedShapes[0].type === 'token' && mayEdit(selectedShapes[0]) && (
@@ -2614,7 +2720,8 @@ export default function SceneCanvas({ campaignShortname, sceneShortname, gm = fa
       <SideDrawer title='Aspects' side='left' storageKey='fate.aspectsDrawerOpen' defaultOpen={window.innerWidth >= 900} onOpenChange={setAspectsOpen}>
         <AspectsPanel
           campaignShortname={campaignShortname}
-          aspects={shownAspects}
+          // (A label on a shape that's gone isn't on the map.)
+          aspects={shownAspects.map(a => a.pinnedTo && !labelAnchor(a.pinnedTo) ? { ...a, pinnedTo: undefined } : a)}
           characters={characters}
           sheetAspects={sheetAspects}
           consequences={consequenceAspects}

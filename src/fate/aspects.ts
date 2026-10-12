@@ -21,6 +21,9 @@ export type SceneAspect = {
   note?: string;
   // Where the GM has pinned a scene aspect on the map, as a label, in map coordinates.
   pin?: AspectPin;
+  // Or the shape on the map (the id of a drawing, not a token) its label is attached
+  // to instead, so it moves along with it. A label on a shape that's gone isn't shown.
+  pinnedTo?: string;
 };
 
 export type AspectPin = { x: number, y: number };
@@ -90,6 +93,7 @@ export type SceneSheetAspect = SheetAspect & {
   target?: string | null;
   targetTitle?: string;
   pin?: AspectPin;
+  pinnedTo?: string;
 };
 
 export const SCENE_ASPECTS_KEY = 'aspects';
@@ -112,6 +116,7 @@ export function fromSceneSheet(entries: unknown): SceneAspect[] {
       ...(entry.targetTitle ? { targetTitle: entry.targetTitle } : {}),
       ...(entry.note ? { note: entry.note } : {}),
       ...(isPin(entry.pin) ? { pin: { x: entry.pin.x, y: entry.pin.y } } : {}),
+      ...(typeof entry.pinnedTo === 'string' && entry.pinnedTo ? { pinnedTo: entry.pinnedTo } : {}),
     }));
 }
 
@@ -123,6 +128,7 @@ export function toSceneSheet(aspects: SceneAspect[]): SceneSheetAspect[] {
     target: aspect.target,
     ...(aspect.targetTitle ? { targetTitle: aspect.targetTitle } : {}),
     ...(aspect.pin ? { pin: aspect.pin } : {}),
+    ...(aspect.pinnedTo ? { pinnedTo: aspect.pinnedTo } : {}),
   }));
 }
 

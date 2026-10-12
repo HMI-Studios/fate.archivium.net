@@ -198,13 +198,16 @@ function AspectRow({ aspect, onSheet = false, canEdit, onUpdate, onRemove, onKee
         {canEdit && aspect.kind !== 'boost' && (
           <button title={fromSheet ? 'Add a free invoke (from creating an advantage on it)' : 'Add a free invoke'} onClick={() => onUpdate(aspect.id, { freeInvokes: aspect.freeInvokes + 1 })}>+ invoke</button>
         )}
-        {onPin && !onSheet && !aspect.target && (
-          <button
-            title={aspect.pin ? 'Take its label off the map' : 'Put it on the map as a label, where everyone can see it (drag it into place)'}
-            aria-pressed={Boolean(aspect.pin)}
-            onClick={() => onPin(aspect.id, !aspect.pin)}
-          >{aspect.pin ? 'Unpin' : 'Pin to map'}</button>
-        )}
+        {onPin && !onSheet && !aspect.target && (() => {
+          const pinned = Boolean(aspect.pin || aspect.pinnedTo);
+          return <button
+            title={pinned
+              ? 'Take its label off the map'
+              : 'Put it on the map as a label, where everyone can see it (drag it into place). To have it move with a shape on the map, select the shape and use Label instead.'}
+            aria-pressed={pinned}
+            onClick={() => onPin(aspect.id, !pinned)}
+          >{pinned ? 'Unpin' : 'Pin to map'}</button>;
+        })()}
         {canEdit && !onSheet && aspect.kind === 'temporary' && aspect.target && !tokenIdOfActor(aspect.target) && (
           <button title="Move it onto the character's sheet so it outlasts the scene" onClick={() => onKeepOnSheet(aspect)}>Keep on sheet</button>
         )}
